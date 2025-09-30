@@ -1,0 +1,701 @@
+/* ----------------------------------------------------------------------
+   FixMaxwellLink: i-PI–compatible client that:
+   - receives E-field [Ex,Ey,Ez] in atomic units from a MaxwellLink SocketHub,
+   - applies F = qE to atoms, and
+   - sends back d(mu)/dt = sum_i q_i v_i (atomic units) each step.
+   Contributing author: Tao E. Li (University of Delaware)
+   --------------------------------------------- */
+
+#include "fix_maxwelllink.h"
+
+#include "atom.h"
+#include "comm.h"
+#include "domain.h"
+#include "error.h"
+#include "force.h"
+#include "group.h"
+#include "memory.h"
+#include "modify.h"
+#include "update.h"
+#include "integrate.h"
+#include "compute.h"
+#include "neighbor.h"
+#include "input.h" 
+#include <sstream>
+#include <iomanip>
+
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <string>
+#include <cmath>
+
+#ifndef _WIN32
+  #include <netdb.h>
+  #include <netinet/in.h>
+  #include <netinet/tcp.h>
+  #include <sys/socket.h>
+  #include <sys/types.h>
+  #include <sys/un.h>
+  #include <unistd.h>
+#else
+  #error "FixMaxwellLink requires a POSIX-like (UNIX) environment"
+#endif
+
+using namespace LAMMPS_NS;
+using namespace FixConst;
+
+#define MSGLEN 12
+
+// --- protocol tags (i-PI compatible) ---
+static const char HDR_STATUS[MSGLEN+1]     = "STATUS      ";
+static const char HDR_READY [MSGLEN+1]     = "READY       ";
+static const char HDR_HAVEDATA[MSGLEN+1]   = "HAVEDATA    ";
+static const char HDR_NEEDINIT[MSGLEN+1]   = "NEEDINIT    ";
+static const char HDR_INIT  [MSGLEN+1]     = "INIT        ";
+static const char HDR_POSDATA[MSGLEN+1]    = "POSDATA     "; // aliased FIELDDATA
+static const char HDR_GETFORCE[MSGLEN+1]   = "GETFORCE    "; // aliased GETSOURCE
+static const char HDR_FORCEREADY[MSGLEN+1] = "FORCEREADY  "; // aliased SOURCEREADY
+static const char HDR_STOP   [MSGLEN+1]    = "STOP        ";
+static const char HDR_BYE    [MSGLEN+1]    = "BYE         ";
+static const char HDR_EXIT   [MSGLEN+1]    = "EXIT        ";
+
+/* ---------------------------------------------------------------------- */
+
+FixMaxwellLink::FixMaxwellLink(LAMMPS *lmp, int narg, char **arg)
+: Fix(lmp, narg, arg),
+  host(nullptr), port(0), inet(1), master(0),
+  sockfd(-1), initialized(0), have_field(0),
+  bsize(0), ex_fac(0.0), ey_fac(0.0), ez_fac(0.0),
+  Eau_x(0.0), Eau_y(0.0), Eau_z(0.0),
+  qe2f(0.0), v_to_au(0.0), efield_au_native(0.0)
+{
+  if (narg < 5) utils::missing_cmd_args(FLERR, "fix MaxwellLink", error);
+
+  if (atom->tag_enable == 0) error->all(FLERR, "Fix MaxwellLink requires atom IDs");
+  if (strcmp(update->unit_style, "lj") == 0)
+    error->all(FLERR, "Fix MaxwellLink does not support 'units lj'");
+
+  host = utils::strdup(arg[3]);
+  port = utils::inumeric(FLERR, arg[4], false, lmp);
+
+  // optional: "unix"
+  inet = 1;
+  int iarg = 5;
+  while (iarg < narg) {
+    if (strcmp(arg[iarg], "unix") == 0) {
+      inet = 0; ++iarg;
+    } else {
+      error->all(FLERR, "Unknown fix MaxwellLink keyword: {}", arg[iarg]);
+    }
+  }
+
+  if (inet && ((port <= 1024) || (port > 65536)))
+    error->all(FLERR, "Invalid port for fix MaxwellLink: {}", port);
+
+  master = (comm->me == 0) ? 1 : 0;
+  bsize = 0;
+
+}
+
+/* ---------------------------------------------------------------------- */
+
+FixMaxwellLink::~FixMaxwellLink()
+{
+  if (host) free(host);
+  close_socket();
+}
+
+/* ---------------------------------------------------------------------- */
+
+int FixMaxwellLink::setmask()
+{
+  int mask = 0;
+  mask |= INITIAL_INTEGRATE; // receive E-field for this step
+  mask |= POST_FORCE;        // apply F = qE
+  mask |= FINAL_INTEGRATE;   // compute/send d(mu)/dt
+  return mask;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::init()
+{
+  // units conversion parameters
+  // prefactor to convert lammps charge * E-field (native units) to force (native units)
+  qe2f = force->qe2f;
+  // 1 Bohr in native length
+  a0_native   = 0.529177210544 * force->angstrom; 
+  // 1 a.u. time in native time
+  timeau_native = 0.024188843265864 * force->femtosecond;
+  // 1 Hartree energy in native energy
+  Eh_native = force->qqr2e * force->qelectron * force->qelectron / a0_native;
+  // assuming lammps is operated under 'si' units
+  // force->angstrom = 1.0 Angstrom
+  // force->femtosecond = 1.0 fs
+  // force->qelectron = 1.6021765e-19 C
+  // force->qqr2e = 8.9876e9 (1/(4*pi*epsilon0)) in m/F
+  // force->qe2f = 1.0
+  // Eh_native = 8.9876e9 * (1.6021765e-19)^2 / (0.529177210544 * 1e-10) = 4.359744650e-18 J
+
+  // velocity back conversion definition:
+  // converting LAMMPS native velocity to a.u. should apply the inverse
+  // idea is for 1 Angstrom/fs velocity in LAMMPS to become ~0.0457 a.u. velocity
+  v_to_au = 1.0 / (a0_native / timeau_native);
+
+  // E-field conversion definition:
+  // converting E-field in atomic units to LAMMPS native units
+  // idea is for 1 Hartree/e/Bohr E-field in atomic units to become ~51.422 V/Angstrom in LAMMPS
+  efield_au_native = Eh_native / (force->qelectron * a0_native);
+  // assuming 'si' units, efield_au_native = 4.359744650e-18 / (1.6021765e-19 * 0.529177210544 * 1e-10) = 51.4220629 V/Angstrom
+
+  if (master) {
+    open_socket();
+  }
+
+  // makes sure that neighbor lists are re-built at each step
+  neighbor->delay = 0;
+  neighbor->every = 1;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::open_socket()
+{
+  if (!master) return;
+
+  if (!inet) {
+    // UNIX domain socket 
+    struct sockaddr_un serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sun_family = AF_UNIX;
+    std::string path = "/tmp/socketmxl_";
+    path += host;
+    strncpy(serv_addr.sun_path, path.c_str(), sizeof(serv_addr.sun_path)-1);
+
+    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sockfd < 0) error->one(FLERR, "Error creating UNIX socket in fix MaxwellLink");
+    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+      if (!stop_requested)
+        error->one(FLERR, "Error connecting UNIX socket in fix MaxwellLink");
+      else 
+      {
+        close_socket();
+        // end LAMMPS simulation 
+        lmp->input->one("quit 0");   // graceful shutdown, exit status 0
+      }
+    }
+    return;
+  }
+
+  // TCP/IP: try all records (IPv6 and IPv4) until one connects
+  struct addrinfo hints, *res = nullptr, *rp = nullptr;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_family   = AF_UNSPEC;   // try v6 and v4
+
+  int gai = getaddrinfo(host, std::to_string(port).c_str(), &hints, &res);
+  if (gai != 0) error->one(FLERR, "Fix MaxwellLink: getaddrinfo() failed for host {}", host);
+
+  int last_errno = 0;
+  for (rp = res; rp != nullptr; rp = rp->ai_next) {
+    int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    if (fd < 0) { last_errno = errno; continue; }
+    sockfd = fd;
+    set_nodelay_keepalive();
+    if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) == 0) break;  // success
+    last_errno = errno;
+    close(sockfd);
+    sockfd = -1;
+  }
+  freeaddrinfo(res);
+
+  if (sockfd < 0) {
+    error->one(FLERR, "Fix MaxwellLink: connect() failed for {}:{} (errno {})",
+               host, port, last_errno);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::close_socket()
+{
+  if (sockfd >= 0) {
+    close(sockfd);
+    sockfd = -1;
+    initialized = 0;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::set_nodelay_keepalive()
+{
+  if (sockfd < 0) return;
+  int one = 1;
+  setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (char*)&one, sizeof(int));
+  // may be AF_UNIX, TCP_NODELAY invalid there -> ignore errors
+  setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof(int));
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::writebuffer(const char *data, int len)
+{
+  int n = ::write(sockfd, data, len);
+  if (n < 0) error->one(FLERR, "Fix MaxwellLink: write() failed (broken connection)");
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::readbuffer(char *data, int len)
+{
+  int n = ::read(sockfd, data, len), nr = n;
+  while (nr > 0 && n < len) {
+    nr = ::read(sockfd, &data[n], len - n);
+    n += nr;
+  }
+  if (n == 0) error->one(FLERR, "Fix MaxwellLink: read() got EOF (broken connection)");
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::read_header(char *hdr12)
+{
+  readbuffer(hdr12, MSGLEN);
+  hdr12[MSGLEN] = 0;
+}
+
+/* ---------------------------------------------------------------------- */
+
+int FixMaxwellLink::read_int32()
+{
+  int val = 0;
+  readbuffer((char*)&val, 4);
+  return val;
+}
+
+/* ---------------------------------------------------------------------- */
+
+int FixMaxwellLink::read_bytes(char *&buf)
+{
+  int n = read_int32();
+  if (n <= 0) { buf = nullptr; return 0; }
+  buf = (char*) malloc(n);
+  readbuffer(buf, n);
+  return n;
+}
+
+/* ---------------------------------------------------------------------- */
+
+static bool parse_dt_au_from_json(const char* s, int n, double& out_dt_au)
+{
+  // looks for "dt_au": <number>
+  const char* p = s;
+  const char* end = s + n;
+  while (p < end) {
+    // match "dt_au" literally (allow spaces before/after)
+    if (*p == 'd' && (end - p) >= 5 && std::strncmp(p, "dt_au", 5) == 0) {
+      const char* q = p + 5;
+      while (q < end && *q != ':') ++q;
+      if (q == end) break;
+      ++q; // past ':'
+      while (q < end && (std::isspace((unsigned char)*q) || *q=='"')) ++q;
+      char* r = nullptr;
+      double v = std::strtod(q, &r);
+      if (r && r != q) { out_dt_au = v; return true; }
+    }
+    ++p;
+  }
+  return false;
+}
+
+void FixMaxwellLink::build_additional_json(std::string& out,
+                                          double t_fs, double tempK, double pe_au, double ke_au,
+                                          const double dmudt_au[3]) const
+{
+  std::ostringstream ss;
+  ss.setf(std::ios::fixed);
+  ss << std::setprecision(15);
+  ss << '{'
+     << "\"t_fs\":"   << t_fs
+     << ",\"temp_K\":"<< tempK
+     << ",\"pe_au(not implemented)\":" << pe_au
+     << ",\"ke_au\":" << ke_au
+     << ",\"dmudt_au\":["<< dmudt_au[0] << ',' << dmudt_au[1] << ',' << dmudt_au[2] << "]"
+     << '}';
+  out = ss.str();
+}
+
+
+void FixMaxwellLink::handshake_if_needed()
+{
+  if (!master || initialized) return;
+
+  // Drive the minimal INIT dance:
+  // STATUS -> send NEEDINIT
+  // expect INIT: int32 molid + int32 len + JSON bytes (ignored or parsed)
+  char header[MSGLEN+1];
+  while (!initialized) {
+    read_header(header);
+
+    if (!strncmp(header, HDR_STATUS, MSGLEN)) {
+      writebuffer(HDR_NEEDINIT, MSGLEN);
+      continue;
+    }
+    if (!strncmp(header, HDR_INIT, MSGLEN)) {
+      molid = read_int32();
+      if (comm->me == 0)
+        printf("[MaxwellLink] Assigned a molecular ID: %d\n", molid);
+      char *blob = nullptr;
+      int blen = read_bytes(blob);
+
+      // Parse "dt_au" from JSON payload
+      double parsed_dt_au = 0.0;
+      if (blob && blen > 0) {
+        parse_dt_au_from_json(blob, blen, parsed_dt_au);
+      }
+      if (blob) free(blob);
+      dt_au_recv = parsed_dt_au;
+
+      // Convert to native LAMMPS time units: 1 a.u. time = 0.024188843265864 fs
+      const double timeau_native = 0.024188843265864 * force->femtosecond;
+      if (dt_au_recv > 0.0) {
+        dt_native_recv = dt_au_recv * timeau_native;
+        // Force LAMMPS to use this dt on the master now
+        const double prior = update->dt;
+        update->dt = dt_native_recv;
+        // Make the integrator recompute its internal factors for the new dt
+        if (update->integrate) update->integrate->reset_dt();
+        dt_synced = 1;
+        if (comm->me == 0) {
+          printf("[MaxwellLink] 1 atomic units time in LAMMPS native time units = %.15g\n", timeau_native);
+          printf("[MaxwellLink] MaxwellLink uses time step: dt_au = %.15g ->  dt_native (LAMMPS units) = %.15g\n",
+                 dt_au_recv, dt_native_recv);
+          printf("[MaxwellLink] WARNING: Changing default LAMMPS time step (%.15g) to match MaxwellLink\n", prior);
+        }
+      } else if (comm->me == 0) {
+        printf("[MaxwellLink] WARNING: INIT had no valid dt_au; keeping existing LAMMPS dt = %.15g\n",
+               update->dt);
+      }
+
+      initialized = 1;
+
+      break;
+    }
+    if (!strncmp(header, HDR_STOP, MSGLEN) || !strncmp(header, HDR_EXIT, MSGLEN)) {
+      writebuffer(HDR_BYE, MSGLEN);
+      //error->one(FLERR, "Fix MaxwellLink: server requested stop");
+      printf("[MaxwellLink] Server requested stop/exit during handshake, exiting gracefully...\n");
+      stop_requested = true;
+      return;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::recv_efield()
+{
+  // Read a POSDATA/FIELDDATA block:
+  //  - 3x3 cell (float64), 3x3 invcell (float64), nat (int32), positions (nat x 3 float64)
+  // For EM alias, nat=1 and positions[0] = [Ex,Ey,Ez] in atomic units.
+  double cell[9], icell[9];
+  int nat = 0;
+
+  readbuffer((char*)cell,  9*8);
+  readbuffer((char*)icell, 9*8);
+  readbuffer((char*)&nat,  4);
+
+  if (nat < 1) error->one(FLERR, "Fix MaxwellLink: invalid nat in FIELDDATA/POSDATA");
+
+  double evec[3] = {0,0,0};
+  readbuffer((char*)evec, nat*3*8);
+  // ignore additional positions if nat>1 (shouldn't happen)
+
+  Eau_x = evec[0];
+  Eau_y = evec[1];
+  Eau_z = evec[2];
+
+  // Precompute the force factors used in post_force:
+  ex_fac = qe2f * efield_au_native * Eau_x;
+  ey_fac = qe2f * efield_au_native * Eau_y;
+  ez_fac = qe2f * efield_au_native * Eau_z;
+
+  //printf("[MaxwellLink] within recv_efield: efield_au_native = %.6g\n", efield_au_native);
+  //printf("[MaxwellLink] within recv_efield: qe2f = %.6g\n", qe2f);
+  //printf("[MaxwellLink] within recv_efield: Received E-field (a.u.): [%.6g, %.6g, %.6g]\n", Eau_x, Eau_y, Eau_z);
+  //printf("[MaxwellLink] within recv_efield: Computed force factors: [%.6g, %.6g, %.6g]\n", ex_fac, ey_fac, ez_fac);
+
+  have_field = 1;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::send_amp_vector(const std::string& extra)
+{
+  // Reply FORCEREADY:
+  // energy (1 float64), natoms (int32=1), forces (1x3 float64 -> our amp vector),
+  // virial (3x3 float64), extra blob length (int32=0) + 0 bytes
+  double energy = 0.0;
+  int nat = 1;
+  double vir[9];
+  for (int i=0;i<9;++i) vir[i]=0.0;
+
+  writebuffer(HDR_FORCEREADY, MSGLEN);
+  writebuffer((char*)&energy, 8);
+  writebuffer((char*)&nat,    4);
+  writebuffer((char*)dmu_dt_global, 3*8);
+  writebuffer((char*)vir,     9*8);
+  // send extra JSON blob
+  int len = (int)extra.size();
+  writebuffer((char*)&len, 4);
+  if (len > 0) writebuffer(extra.data(), len);
+
+  //printf("[MaxwellLink] MPI rank %d Sent d(mu)/dt (a.u.): [%.6g, %.6g, %.6g]\n",
+  //       comm->me, dmu_dt_global[0], dmu_dt_global[1], dmu_dt_global[2]);
+
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::initial_integrate(int /*vflag*/)
+{
+  // Master: drive handshake (if needed), then wait for FIELDDATA for this step
+  // Non-master: will get E broadcast from master
+  char header[MSGLEN+1];
+
+  if (master) {
+    if (sockfd < 0) {
+      open_socket();
+      if (sockfd < 0) return; // open_socket failed but stop_requested
+    }
+    handshake_if_needed();
+  }
+
+  MPI_Barrier(world);
+
+  // One-time broadcast of negotiated dt to all ranks
+  double dtbuf = dt_native_recv;
+  MPI_Bcast(&dtbuf, 1, MPI_DOUBLE, 0, world);
+
+  if (!master && !dt_synced) {
+      const double prior = update->dt;
+      update->dt = dtbuf;
+      if (update->integrate) update->integrate->reset_dt();
+      dt_synced = 1;
+      printf("[MaxwellLink] Applied MEEP dt on non-master workers: dt_native (LAMMPS units) = %.15g (was %.15g in LAMMPS input file)\n",
+               dtbuf, prior);
+  }
+
+  if (master) {
+
+    // Consume STATUS loops until we get POSDATA/FIELDDATA
+    while (true) {
+      read_header(header);
+
+      if (!strncmp(header, HDR_STATUS, MSGLEN)) {
+        // Before we have a result, we are READY
+        writebuffer(HDR_READY, MSGLEN);
+        continue;
+      }
+      if (!strncmp(header, HDR_POSDATA, MSGLEN)) {
+        recv_efield();
+        break;
+      }
+      if (!strncmp(header, HDR_STOP, MSGLEN) || !strncmp(header, HDR_EXIT, MSGLEN)) {
+        writebuffer(HDR_BYE, MSGLEN);
+        //error->one(FLERR, "Fix MaxwellLink: server requested stop");
+        printf("[MaxwellLink] Server requested stop/exit, exiting gracefully...\n");
+        stop_requested = true;
+        break;
+      }
+      // ignore any other noise and keep reading
+    }
+  }
+
+  MPI_Barrier(world);
+
+  // --- after rank 0 has received POSDATA and set Eau_x/y/z ---
+  double ebuf[3];
+
+  // fill ebuf on master only
+  if (master) {
+    ebuf[0] = Eau_x; ebuf[1] = Eau_y; ebuf[2] = Eau_z;
+  }
+
+  // EVERY rank must call MPI_Bcast
+  MPI_Bcast(ebuf, 3, MPI_DOUBLE, 0, world);
+
+  // now set the E-field on all ranks
+  Eau_x = ebuf[0];
+  Eau_y = ebuf[1];
+  Eau_z = ebuf[2];
+
+  // recompute force factors locally (identical on all ranks)
+  ex_fac = qe2f * efield_au_native * Eau_x;
+  ey_fac = qe2f * efield_au_native * Eau_y;
+  ez_fac = qe2f * efield_au_native * Eau_z;
+
+  MPI_Barrier(world);
+
+  //printf("[MaxwellLink] MPI rank %d Received E-field (a.u.): [%.6g, %.6g, %.6g] -> Force factors: [%.6g, %.6g, %.6g]\n",
+  //       comm->me, Eau_x, Eau_y, Eau_z, ex_fac, ey_fac, ez_fac);
+
+  have_field = 1;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::post_force(int vflag)
+{
+  if (!have_field) return;
+
+  // Apply F = qE (constant field this step), mirroring fix_efield constant path.
+  double **f = atom->f;
+  double *q   = atom->q;
+  int *mask   = atom->mask;
+  int nlocal  = atom->nlocal;
+  if (igroup == atom->firstgroup) nlocal = atom->nfirst;
+
+  if (!atom->q_flag)
+    error->all(FLERR, "Fix MaxwellLink requires per-atom charge 'q' (no q_flag)");
+
+  for (int i = 0; i < nlocal; i++) {
+    if (mask[i] & groupbit) {
+      f[i][0] += q[i] * ex_fac;
+      f[i][1] += q[i] * ey_fac;
+      f[i][2] += q[i] * ez_fac;
+    }
+  }
+
+  //printf("[MaxwellLink] MPI rank %d applied F=qE to %d atoms\n", comm->me, nlocal);
+  //printf("[MaxwellLink] Last E-field (a.u.): [%.6g, %.6g, %.6g]\n", Eau_x, Eau_y, Eau_z);
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixMaxwellLink::final_integrate()
+{
+  // Compute d(mu)/dt = sum q v  (convert v to atomic units), reduce, and reply.
+  // Reset local accumulator
+  dmu_dt_local[0]=dmu_dt_local[1]=dmu_dt_local[2]=0.0;
+
+  double **v = atom->v;
+  double *q  = atom->q;
+  int *mask  = atom->mask;
+  int nlocal = atom->nlocal;
+  if (igroup == atom->firstgroup) nlocal = atom->nfirst;
+
+  for (int i=0;i<nlocal;i++) {
+    if (!(mask[i] & groupbit)) continue;
+    // LAMMPS v units -> atomic units
+    dmu_dt_local[0] += q[i] * (v[i][0] * v_to_au);
+    dmu_dt_local[1] += q[i] * (v[i][1] * v_to_au);
+    dmu_dt_local[2] += q[i] * (v[i][2] * v_to_au);
+  }
+
+  //printf("[MaxwellLink] MPI rank %d local d(mu)/dt (a.u.): [%.6g, %.6g, %.6g] from %d atoms\n",
+  //       comm->me, dmu_dt_local[0], dmu_dt_local[1], dmu_dt_local[2], nlocal);
+  
+  MPI_Allreduce(dmu_dt_local, dmu_dt_global, 3, MPI_DOUBLE, MPI_SUM, world);
+
+  //printf("[MaxwellLink] Global d(mu)/dt (a.u.): [%.6g, %.6g, %.6g]\n",
+  //       dmu_dt_global[0], dmu_dt_global[1], dmu_dt_global[2]);
+
+  // --- Kinetic energy (native) and count for DOF/temperature estimate
+  double ke_local = 0.0, ke_global = 0.0;
+  long   ngrp_local = 0, ngrp_global = 0;
+  {
+    double **v = atom->v;
+    int *type  = atom->type;
+    double *rmass = atom->rmass;
+    for (int i=0;i<nlocal;i++) {
+      if (!(mask[i] & groupbit)) continue;
+      const double m = rmass ? rmass[i] : atom->mass[type[i]];
+      const double vv = v[i][0]*v[i][0] + v[i][1]*v[i][1] + v[i][2]*v[i][2];
+      ke_local += 0.5 * m * vv;
+      ngrp_local++;
+    }
+    MPI_Allreduce(&ke_local, &ke_global, 1, MPI_DOUBLE, MPI_SUM, world);
+    MPI_Allreduce(&ngrp_local, &ngrp_global, 1, MPI_LONG,   MPI_SUM, world);
+  }
+
+  // --- Potential energy (native) & temperature (K): use computes if present
+  bool   have_pe = false;
+  double pe_native = 0.0;
+  double tempK = -1.0;
+
+  // TODO: compute potential energy of the molecular system
+
+  // fallback temp from KE:  T = 2 KE / (dof * kB)
+  const double dof = 3.0 * (double)ngrp_global;
+  if (tempK < 0.0 && dof > 0.0) tempK = (2.0 * ke_global) / (force->boltz * dof);
+
+  // --- Convert requested fields to required units
+  const double ke_au = ke_global / Eh_native;
+  const double pe_au = have_pe ? (pe_native / Eh_native) : 0.0;
+  const double t_native = update->ntimestep * update->dt;
+  const double t_fs     = t_native / force->femtosecond; // native -> femtoseconds
+
+  // 4) Build JSON on master
+  if (master) {
+    build_additional_json(extra_json, t_fs, tempK, pe_au, ke_au, dmu_dt_global);
+  }
+
+  // Master: answer STATUS/GETFORCE with HAVEDATA/FORCEREADY
+  if (master) {
+    char header[MSGLEN+1];
+
+    while (true) {
+      if (!try_read_header(header)) {
+        // server closed gracefully
+        close_socket();
+        have_field = 0;
+        return;
+      }
+
+      if (!strncmp(header, HDR_STATUS, MSGLEN)) {
+        writebuffer(HDR_HAVEDATA, MSGLEN);
+        continue;
+      }
+      if (!strncmp(header, HDR_GETFORCE, MSGLEN)) {
+        send_amp_vector(extra_json);
+        break;
+      }
+      if (!strncmp(header, HDR_STOP, MSGLEN) || !strncmp(header, HDR_EXIT, MSGLEN)) {
+        writebuffer(HDR_BYE, MSGLEN);
+        //error->one(FLERR, "Fix MaxwellLink: server requested stop");
+        printf("[MaxwellLink] Server requested stop/exit, exiting gracefully...\n");
+        stop_requested = true;
+        break;
+      }
+    }
+  }
+
+  // All ranks wait for master to finish socket ops
+  MPI_Barrier(world);
+
+  have_field = 0;
+}
+
+
+bool FixMaxwellLink::try_read_header(char *hdr12)
+{
+  // Non-fatal read of 12-byte header. Returns false on clean EOF.
+  int n = ::read(sockfd, hdr12, MSGLEN);
+  if (n == 0) return false;
+  if (n < 0) error->one(FLERR, "Fix MaxwellLink: read() failed while reading header");
+
+  int got = n;
+  while (got < MSGLEN) {
+    int nr = ::read(sockfd, hdr12 + got, MSGLEN - got);
+    if (nr == 0) return false;
+    if (nr < 0) error->one(FLERR, "Fix MaxwellLink: read() failed while reading header");
+    got += nr;
+  }
+  hdr12[MSGLEN] = 0;
+  return true;
+}
+

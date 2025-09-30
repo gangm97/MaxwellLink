@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maxwelllink"
+version = "0.1.0"
+description = "MaxwellLink: Socket interface for coupled EM-molecular simulations"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{ name = "Tao E. Li", email = "taoeli@udel.edu" }]
+dependencies = [
+  "numpy>=1.24",
+  "pytest>=7",
+  "cmake>=3.18",
+  "requests>=2.31"
+]
+
+# `mxl_driver.py` and other scripts available on PATH
+[project.scripts]
+"mxl_driver.py" = "maxwelllink.mxl_drivers.python.mxl_driver:mxl_driver_main"
+"mxl_install_lammps" = "maxwelllink.mxl_drivers.lammps.install:mxl_lammps_main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["maxwelllink*", "mxl_drivers*"]
+
+[tool.setuptools.package-data]
+"maxwelllink.mxl_drivers.lammps" = ["fix_maxwelllink.*", "README.md"]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.3",
+  "flake8>=7.0",
+  "pre-commit>=3.6",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311", "py312", "py313"]
+include = '\.pyi?$'
+exclude = '''
+(
+  /(
+      \.direnv
+    | \.eggs
+    | \.git
+    | \.mypy_cache
+    | \.pytest_cache
+    | \.ruff_cache
+    | \.venv
+    | build
+    | dist
+    | .*\.egg-info
+  )/
+)
+'''
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = [
+  "E203",  # black compatibility around slices
+  "W503",  # black-compatible line breaks before binary operator
+]
+per-file-ignores = [
+  # Allow re-export or star imports in package __init__.py files
+  "__init__.py:F401,F403,F405",
+  "src/**/__init__.py:F401,F403,F405",
+]
+
+[tool.pytest.ini_options]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+  # SWIG/pymeep emits these during import; ignore just those messages
+  "ignore:.*SwigPy(Packed|Object).*no __module__ attribute:DeprecationWarning",
+  "ignore:.*swigvarlink.*no __module__ attribute:DeprecationWarning",
+]

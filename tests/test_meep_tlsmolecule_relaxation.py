@@ -1,0 +1,73 @@
+# tests/test_tls_relaxation.py
+import numpy as np
+import pytest
+
+mp = pytest.importorskip("meep", reason="MEEP/pymeep is required for this test")
+
+import maxwelllink as mxl
+
+
+@pytest.mark.slow
+def test_tls_relaxation_matches_analytical():
+    """
+    Numerically integrate TLS population relaxation and compare
+    against the analytical golden-rule rate in 2D.
+
+    Pass criteria (normalized to initial pop):
+        std_dev < 3e-3 and max_abs_diff < 8e-3
+    """
+    # --- simulation setup in vacuum ---
+    cell = mp.Vector3(8, 8, 0)
+    geometry = []
+    sources_non_molecule = []
+    pml_layers = [mp.PML(3.0)]
+    resolution = 10
+
+    # TLS definition
+    dipole_moment = 1e-1
+    frequency = 1.0
+    tls = mxl.TLSMolecule(
+        resolution=resolution,
+        center=mp.Vector3(0, 0, 0),
+        size=mp.Vector3(1, 1, 1),
+        frequency=frequency,
+        dipole_moment=dipole_moment,
+        sigma=0.1,
+        dimensions=2,
+        orientation=mp.Ez,
+    )
+
+    # small initial excited-state population
+    tls.reset_tls_population(1e-4)
+
+    sim = mp.Simulation(
+        cell_size=cell,
+        geometry=geometry,
+        sources=sources_non_molecule,
+        boundary_layers=pml_layers,
+        resolution=resolution,
+    )
+
+    # run coupled update (no sockets path)
+    sim.run(
+        mxl.update_molecules_no_socket(sources_non_molecule=[], molecules=[tls]),
+        until=90,
+    )
+
+    # Only rank 0 collects/asserts (safe under MPI or serial)
+    if mp.am_master():
+        population = np.array([np.real(ad["Pe"]) for ad in tls.additional_data_history])
+        time = np.array([np.real(ad["time"]) for ad in tls.additional_data_history])
+
+        # analytical golden-rule rate in 2D
+        gamma = dipole_moment**2 * (frequency) ** 2 / 2.0
+        population_analytical = population[0] * np.exp(-time * gamma)
+
+        std_dev = np.std(population - population_analytical) / population[0]
+        max_abs_diff = (
+            np.max(np.abs(population - population_analytical)) / population[0]
+        )
+
+        assert (
+            std_dev < 3e-3 and max_abs_diff < 8e-3
+        ), f"std_dev={std_dev:.3g}, max_abs_diff={max_abs_diff:.3g}"
