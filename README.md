@@ -1,4 +1,4 @@
-# MaxwellLink
+# MaxwellLink: A flexible framework for self-consistent EM-molecular simulations
 
 **MaxwellLink** is a flexible framework for self-consistent EM-molecular simulations via a socket protocol. In detail, it provides a socket communication interface between an external FDTD engine and molecular dynamics packages (**MaxwellLink**). With this socket interface, the Maxwell's equations are propagated by the external FDTD engine, whereas the molecular dynamics are taken care by exisiting quantum or classical molecular dynamics pakcages. Overall, the socket communication decouples the external FDTD engine from the molecular drivers, enabling the self-consistent simulation of EM interacting with **a wide range of molecular or material systems**.
 
@@ -17,16 +17,15 @@ conda create -n $CONDA_ENV -c conda-forge pymeep
 
 # install MaxwellLink
 git clone git@github.com:TaoELi/MaxwellLink.git
-cd PATH_TO_MAXWELLLINK/
+cd MaxwellLink/
 pip install .
 
 # [optional] install Psi4 quantum chemistry code for RT-TDDFT driver
 conda install conda-forge::psi4
 
 # [optional] install modified LAMMPS code (with fix mxl support) for classical MD driver
-# the command below works after installing MaxwellLink with pip install .
 mxl_install_lammps
-# If the above command fails, please try the bash code below instead for installing lammps [working for Linux and MacOS]
+# If the above command fails, please try the bash script below instead
 # bash ./src/maxwelllink/mxl_drivers/lammps/mxl_install_lammps.sh
 ```
 
@@ -40,7 +39,9 @@ pip uninstall maxwelllink
 pytest -v
 ```
 
-## Mimimum python code for using the socket interface (using MEEP as the external FDTD engine)
+## How to use MaxwellLink 
+
+Using MEEP as the external FDTD engine, below we provide a sample Python input file for using MaxwellLink together with MEEP. See [examples](./examples/) for more realistic examples.
 
 ```python
 import meep as mp
@@ -86,9 +87,7 @@ t = np.array([np.real(additional_data["time_au"]) for additional_data in molecul
 mu_z_au = np.array([np.real(additional_data["mu_z_au"]) for additional_data in molecule1.additional_data_history]).flatten()
 ```
 
-## Usage of available molecular drivers
-
-After running the above python code, we need to lunch the driver code in a separate terminal for connecting with FDTD. At this moment, both the **Python** and **C++** drivers are available for usage. 
+After running the above python code, **we need to lunch the driver code in a separate terminal for connecting with FDTD**. At this moment, both the **Python** and **C++** drivers are available for usage. 
 
 To use the Python driver, please check 
 ```bash
