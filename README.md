@@ -7,7 +7,7 @@
 
 - TCP socket interface for inter-code communication enables simulations on **multi-nodes** or multi-HPCs.
 
-- Supporting **realistic photonic environments** (via FDTD engines) coupled to **realistic molecules** (via exisiting molecular simulation tools).
+- Supporting **realistic photonic environments** (via FDTD engines) coupled to **realistic molecules** (via exisiting molecular simulation tools), spanning from first-principles electronic excited-state dynamics to classical empricial force fields.
 
 - Easy to add glue code for supporting additional molecular simulations drivers.
 
