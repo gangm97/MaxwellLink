@@ -208,4 +208,4 @@ marimo/_lsp/
 __marimo__/
 
 # LAMMOS
-examples/log.lammps
+log.lammps

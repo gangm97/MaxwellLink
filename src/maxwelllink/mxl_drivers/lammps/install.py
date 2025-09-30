@@ -20,7 +20,8 @@ TARBALL_URL = (
     "https://github.com/lammps/lammps/releases/download/"
     "stable_29Aug2024_update1/lammps-src-29Aug2024_update1.tar.gz"
 )
-SRC_DIR_NAME = "lammps-29Aug2024"  # directory name inside the tarball
+# directory name inside the tarball
+SRC_DIR_NAME = "lammps-29Aug2024"  
 
 
 def _repo_root_from_here() -> Path:
@@ -138,8 +139,8 @@ def mxl_lammps_main(argv=None):
 
     cmake_cfg = [
         "cmake",
-        "-S",
-        str(src_root / "cmake"),  # LAMMPS uses subdir as project root
+        # LAMMPS uses subdir as project root
+        "-S", str(src_root / "cmake"),
         "-B",
         str(cmake_build_dir),
         "-C",
@@ -148,8 +149,14 @@ def mxl_lammps_main(argv=None):
         str(src_root / "cmake" / "presets" / "nolib.cmake"),
         "-D",
         "PKG_GPU=off",
-        "-D",
-        "BUILD_TOOLS=off",  # avoid FFTW/arch mismatch from tools like phana
+        # avoid FFTW/arch mismatch from tools like phana
+        "-D", "BUILD_TOOLS=off",  
+        # do not use system FFTW, which may conflict with the arm64 vs x86_64 platforms
+        "-D", "FFT=KISS",          
+        # remove libpng
+        "-D", "WITH_PNG=off",         
+        # remove libjpeg
+        "-D", "WITH_JPEG=off",        
     ]
     if sys.platform == "darwin" and platform.machine() == "arm64":
         cmake_cfg += ["-D", "CMAKE_OSX_ARCHITECTURES=arm64"]
