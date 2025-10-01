@@ -35,11 +35,11 @@ class RTTDDFTModel(DummyModel):
     ... )
     >>> model.initialize(dt_new=0.12, molecule_id=0)
     Initial SCF energy: -91.6751251525 Eh
-    >>> model._propagate_full_rt_tddft(nsteps=10)
-    Step   30 Time 1.200000  Etot = -91.6751251490 Eh  ΔE = 0.0000000036 Eh,  μx = 0.000024 a.u.,  μy = 0.000024 a.u.,  μz = 0.965180 a.u.
     >>> model._get_lr_tddft_spectrum(states=5, tda=False)
     Energy (eV): [ 7.395641  8.558096  8.558096 10.766481 10.76651 ]
     Oscillator strengths: [0.       0.       0.       0.047901 0.047901]
+    >>> model._propagate_full_rt_tddft(nsteps=10)
+    Step   30 Time 1.200000  Etot = -91.6751251490 Eh  ΔE = 0.0000000036 Eh,  μx = 0.000024 a.u.,  μy = 0.000024 a.u.,  μz = 0.965180 a.u.
     """
 
     def __init__(

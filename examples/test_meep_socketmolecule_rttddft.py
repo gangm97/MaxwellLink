@@ -23,6 +23,8 @@ molecule1 = mxl.SocketMolecule(
     sigma=0.1,
     dimensions=2,
     time_units_fs=0.1,
+    # this parameter rescales the E-field from FDTD
+    rescaling_factor=0.0,
 )
 
 sim = mp.Simulation(
