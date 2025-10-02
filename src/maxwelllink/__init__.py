@@ -1,4 +1,4 @@
-from .molecule import (
+from .molecule_fast import (
     TLSMolecule,
     SocketMolecule,
     update_molecules,
