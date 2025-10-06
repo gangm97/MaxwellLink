@@ -116,7 +116,7 @@ class RTTDDFTModel(DummyModel):
         self.num_threads = num_threads
         self.remove_permanent_dipole = remove_permanent_dipole
         # current time in a.u.
-        self.t = 0.0  
+        self.t = 0.0
         self.count = 0
 
         # optional, checking whether the driver can be paused and resumed properly
@@ -289,22 +289,27 @@ class RTTDDFTModel(DummyModel):
 
         # V_xc machinery: VBase from the SCF wavefunction (already configured with functional & grid)
         # We'll reuse this at each step to (re)build V_xc(Da,Db) on the grid efficiently.
-        self.Vpot = wfn.V_potential()  # psi4.core.VBase
-        # amount of exact exchange in global hybrids (0 for pure DFA)
-        self.alpha_hfx = (
-            wfn.functional().x_alpha()
-        )  # fraction of exact HF exchange in the chosen functional
+        self.Vpot = wfn.V_potential()
+        # amount of exact HF exchange in global hybrids (0 for pure DFA)
+        self.alpha_hfx = wfn.functional().x_alpha()
 
         if self.alpha_hfx < 1.0:
-            self.Vpot.initialize()  # usually already initialized by SCF, harmless if called
+            self.Vpot.initialize()
             try:
                 # prevents recomputing basis collocation on grid in compute_V()
                 self.Vpot.build_collocation_cache(self.Vpot.nblocks())
             except Exception:
-                pass  # older Psi4 versions may not expose this API
+                pass
 
     def _build_KS_psi4(self, Da_np, Db_np, restricted, V_ext=None):
-        """Return Fa, Fb given current densities."""
+        """
+        Return Fa, Fb given current densities.
+
+        + **`Da_np`** (ndarray): Alpha density matrix in AO basis.
+        + **`Db_np`** (ndarray): Beta density matrix in AO basis.
+        + **`restricted`** (bool): Whether the calculation is restricted (RKS) or unrestricted (UKS).
+        + **`V_ext`** (ndarray or None): External potential in AO basis to be added to both Fa and Fb. Default is None.
+        """
         if restricted:
             # RKS: J from total density (2 * Da), K from Da if hybrid
             Jtot = self._build_J_psi4(2.0 * Da_np)
@@ -341,18 +346,37 @@ class RTTDDFTModel(DummyModel):
         return Fa, Fb
 
     def _build_J_psi4(self, P):
-        """Coulomb J[P] in AO basis using 4-index (pq|rs)."""
+        """
+        Coulomb J[P] in AO basis using 4-index (pq|rs).
+
+        + **`P`** (ndarray): Density matrix in AO basis.
+        """
         return np.einsum("pqrs,rs->pq", self.I_ao, P, optimize=True)
 
     def _build_K_psi4(self, P):
-        """Exchange K[P] in AO basis using 4-index (pr|qs). Only used if alpha_hfx > 0."""
+        """
+        Exchange K[P] in AO basis using 4-index (pr|qs). Only used if alpha_hfx > 0.
+
+        + **`P`** (ndarray): Density matrix in AO basis.
+        """
         return np.einsum("prqs,rs->pq", self.I_ao, P, optimize=True)
 
     def _build_Vxc_psi4(self, Da_np, Db_np, restricted):
-        import psi4
+        """
+        Build V_xc in AO basis from current spin densities via VBase.
+        VBase expects *real* densities; pass the real (Hermitian) parts.
 
-        """Build V_xc in AO basis from current spin densities via VBase.
-        VBase expects *real* densities; pass the real (Hermitian) parts."""
+        + **`Da_np`** (ndarray): Alpha density matrix in AO basis.
+        + **`Db_np`** (ndarray): Beta density matrix in AO basis.
+        + **`restricted`** (bool): Whether the calculation is restricted (RKS) or unrestricted (UKS).
+        """
+        try:
+            import psi4
+        except ImportError as e:
+            raise ImportError(
+                "RTTDDFTModel with engine='psi4' requires Psi4. Install with `conda install conda-forge::psi4`."
+            ) from e
+
         nbf = Da_np.shape[0]
         if restricted:
             D = psi4.core.Matrix.from_array(np.real((Da_np + Db_np.T) / 2))  # Da==Db
@@ -370,6 +394,13 @@ class RTTDDFTModel(DummyModel):
             return np.asarray(Va_m), np.asarray(Vb_m)
 
     def _energy_dipole_analysis_psi4(self, Da_np, Db_np):
+        """
+        Compute total energy and dipole moment from current densities.
+        This is mainly for analysis and output during the propagation.
+
+        + **`Da_np`** (ndarray): Alpha density matrix in AO basis.
+        + **`Db_np`** (ndarray): Beta density matrix in AO basis.
+        """
         Dtot = Da_np + Db_np
         Jtot = self._build_J_psi4(Dtot)
         # V_xc energy from VBase quadrature (if available)
@@ -384,9 +415,7 @@ class RTTDDFTModel(DummyModel):
         if self.alpha_hfx > 0.0:
             if self.is_restricted:
                 K = self._build_K_psi4(self.Da)
-                ExHF = (
-                    -self.alpha_hfx * np.einsum("pq,pq->", K, self.Da).real
-                )  # factor 1/2 for closed-shell
+                ExHF = -self.alpha_hfx * np.einsum("pq,pq->", K, self.Da).real
             else:
                 Ka = self._build_K_psi4(self.Da)
                 Kb = self._build_K_psi4(self.Db)
@@ -456,12 +485,12 @@ class RTTDDFTModel(DummyModel):
                 DaO = self.U @ self.Da @ self.U.T
                 FaO = self.X.T @ self.Fa @ self.X
                 if self.is_restricted:
-                    # trial propagation, P(t+dt) = U(t) P(t) U†(t), U(t) = exp(-i dt F_O(t))
+                    # trial propagation, P(t+dt) = U(t) P(t) U^{\dagger}(t), U(t) = exp(-i dt F_O(t))
                     Uprop = expm((-1j * self.dt_rttddft_au) * FaO)
                     DaO_trial = Uprop @ DaO @ Uprop.conj().T
                     Da_trial = self.X @ DaO_trial @ self.X.T
                     Db_trial = Da_trial.copy()
-                    # real propagation, P(t+dt) = U'(t) P(t) U'†(t), U'(t) = exp(-i dt/2 F_O(t+dt)) @ exp(-i dt/2 F_O(t))
+                    # real propagation, P(t+dt) = U'(t) P(t) U'^{\dagger}(t), U'(t) = exp(-i dt/2 F_O(t+dt)) @ exp(-i dt/2 F_O(t))
                     Fa_future, Fb_future = self._build_KS_psi4(
                         Da_trial, Db_trial, self.is_restricted, V_ext=V_ext
                     )
@@ -473,17 +502,17 @@ class RTTDDFTModel(DummyModel):
                     self.Da = self.X @ DaO @ self.X.T
                     self.Db = self.Da.copy()
                 else:
-                    # UKS: propagate α and β separately
+                    # UKS: propagate alpha and beta separately
                     DbO = self.U @ self.Db @ self.U.T
                     FbO = self.X.T @ self.Fb @ self.X
-                    # trial propagation, P(t+dt) = U(t) P(t) U†(t), U(t) = exp(-i dt F_O(t))
+                    # trial propagation, P(t+dt) = U(t) P(t) U^{\dagger}(t), U(t) = exp(-i dt F_O(t))
                     Uprop_a = expm(-(1j * self.dt_rttddft_au) * FaO)
                     Uprop_b = expm(-(1j * self.dt_rttddft_au) * FbO)
                     DaO_trial = Uprop_a @ DaO @ Uprop_a.conj().T
                     DbO_trial = Uprop_b @ DbO @ Uprop_b.conj().T
                     Da_trial = self.X @ DaO_trial @ self.X.T
                     Db_trial = self.X @ DbO_trial @ self.X.T
-                    # real propagation, P(t+dt) = U'(t) P(t) U'†(t), U'(t) = exp(-i dt/2 F_O(t+dt)) @ exp(-i dt/2 F_O(t))
+                    # real propagation, P(t+dt) = U'(t) P(t) U'^{\dagger}(t), U'(t) = exp(-i dt/2 F_O(t+dt)) @ exp(-i dt/2 F_O(t))
                     Fa_future, Fb_future = self._build_KS_psi4(
                         Da_trial, Db_trial, self.is_restricted, V_ext=V_ext
                     )
@@ -552,6 +581,10 @@ class RTTDDFTModel(DummyModel):
         """
         Standalone function to compute the linear absorption spectrum of molecules using the linear-response TDDFT (LR-TDDFT) method.
         This function is mainly for testing and validation purposes.
+
+        + **`states`** (int): Number of excited states to compute. Default is 20.
+        + **`tda`** (bool): Whether to use the Tamm-Dancoff approximation (TDA). Default is False (full TDDFT).
+        0 = full TDDFT, 1 = TDA.
         """
         if self.engine == "psi4":
             from psi4.driver.procrouting.response.scf_response import tdscf_excitations
@@ -562,9 +595,9 @@ class RTTDDFTModel(DummyModel):
 
             tdm_len = np.array(
                 [r["ELECTRIC DIPOLE TRANSITION MOMENT (LEN)"] for r in res]
-            )  # shape (n,3)
+            )
             mu2 = np.sum(tdm_len**2, axis=1)
-            # Oscillator strengths (length gauge): f = 2/3 * ω * |μ|^2   (ω in a.u.)
+            # Oscillator strengths (length gauge): f = 2/3 * \omega * |\mu|^2   (\omega in a.u.)
             oscillator_strengths = (2.0 / 3.0) * poles * mu2
 
             # save to file
@@ -631,8 +664,8 @@ class RTTDDFTModel(DummyModel):
 
     def append_additional_data(self):
         """
-        Append additional data to be sent back to MEEP, which can be retrieved by the user
-        via the Python interface of MEEP: mp.SocketMolecule.additional_data_history.
+        Append additional data to be sent back to MaxwellLink, which can be retrieved by the user
+        via: maxwelllink.SocketMolecule.additional_data_history.
 
         Returns:
         - A dictionary containing additional data.
@@ -645,11 +678,14 @@ class RTTDDFTModel(DummyModel):
         data["mu_z_au"] = self.dipoles[-1][2] if len(self.dipoles) > 0 else 0.0
         return data
 
-    def _dump_to_checkpoint(self, molid):
+    def _dump_to_checkpoint(self):
         """
         Dump the internal state of the model to a checkpoint.
-        """
 
+        This function saves the current density matrices (Da, Db), Fock matrices (Fa, Fb),
+        current time (t), and step count (count) to a NumPy .npy file.
+        The checkpoint file is named "rttddft_checkpoint_id_<molid>.npy".
+        """
         # try to save self.Da, self.Db, self.Fa, self.Fb in a single npy file
         np.save(
             self.checkpoint_filename,
@@ -663,7 +699,7 @@ class RTTDDFTModel(DummyModel):
             },
         )
 
-    def _reset_from_checkpoint(self, molid):
+    def _reset_from_checkpoint(self):
         """
         Reset the internal state of the model from a checkpoint.
         """
@@ -672,7 +708,7 @@ class RTTDDFTModel(DummyModel):
             # so we just keep the current state
             print(
                 "[checkpoint] No checkpoint file found for molecule ID %d, starting fresh."
-                % molid
+                % self.molecule_id
             )
         else:
             checkpoint_data = np.load(
@@ -687,7 +723,7 @@ class RTTDDFTModel(DummyModel):
 
     def _snapshot(self):
         """
-        Return a snapshot of the internal state for propagation.
+        Return a snapshot of the internal state for propagation. Deep copy the arrays to avoid mutation issues.
         """
         snapshot = {
             "time": self.t,

@@ -35,15 +35,6 @@ def _load_spec_module(path: str):
     return mod
 
 
-def _strip_quotes(s):
-    if not isinstance(s, str):
-        return s
-    s = s.strip()
-    if (len(s) >= 2) and ((s[0] == s[-1]) and s[0] in ("'", '"')):
-        return s[1:-1]
-    return s
-
-
 def _parse_kwargs_string(s: str) -> Dict:
     """
     Parse a compact 'k1=v1,k2=v2' into dict with numbers/bools auto-cast.
@@ -53,6 +44,16 @@ def _parse_kwargs_string(s: str) -> Dict:
     """
     if not s:
         return {}
+
+    def _strip_quotes(s):
+        if not isinstance(s, str):
+            return s
+        s = s.strip()
+        if (len(s) >= 2) and ((s[0] == s[-1]) and s[0] in ("'", '"')):
+            return s[1:-1]
+        return s
+
+    s = _strip_quotes(s)
     out = {}
     for token in s.split(","):
         if not token.strip():
@@ -77,12 +78,13 @@ def _parse_kwargs_string(s: str) -> Dict:
     return out
 
 
-def _expect_mu_vector(rho, mu_ops):
+def _calc_mu_vector_expectation(rho, mu_ops):
     """
     Return <mu_x>, <mu_y>, <mu_z> as a length-3 numpy array.
 
     + **`rho`** (qutip.Qobj): Density matrix of the system.
-    + **`mu_ops`** (dict): Dictionary with keys 'x', 'y', 'z' and values as qutip.Qobj or None.
+    + **`mu_ops`** (dict): Dictionary with keys 'x', 'y', 'z' and values as qutip.Qobj or None,
+    storing dipole operators.
     """
     vec = np.zeros(3, dtype=float)
     for i, key in enumerate(("x", "y", "z")):
@@ -92,7 +94,7 @@ def _expect_mu_vector(rho, mu_ops):
     return vec
 
 
-def _make_tls_preset(
+def _build_model_tls(
     omega=0.242,
     mu12=187,
     orientation=2,
@@ -104,12 +106,14 @@ def _make_tls_preset(
     Simple 2-level model preset like TLSModel, but using QuTiP objects.
     H0 = |e><e| * omega
     mu = mu12 * (|g><e| + |e><g|) along chosen axis
-    Lindblad: relaxation (\sigma_{-}) at rate gamma_relax, pure dephasing at gamma_dephase
+    Lindblad: relaxation (\sigma_{-}) at rate gamma_relax, pure dephasing at gamma_dephase.
+
+    This function provides a reference implementation for the `build_model(**kwargs)` function.
 
     + **`omega`** (float): Transition frequency in atomic units (a.u.). Default is 0.242 a.u.
     + **`mu12`** (float): Dipole moment in atomic units (a.u.). Default is 187 a.u.
     + **`orientation`** (int): Orientation of the dipole moment, can be 0 (x), 1 (y), or 2 (z). Default is 2 (z).
-    + **`pe`** (float): Initial population in the excited state. Default is 0.0.
+    + **`pe_initial`** (float): Initial population in the excited state. Default is 0.0.
     + **`gamma_relax`** (float): Relaxation rate (a.u.). Default is 0.0.
     + **`gamma_dephase`** (float): Pure dephasing rate (a.u.). Default is 0.0.
     """
@@ -155,7 +159,7 @@ class QuTiPModel(DummyModel):
         H(t) = H0 - Ex(t)*mu_x - Ey(t)*mu_y - Ez(t)*mu_z
 
     Two options for constructing the N-level quantum model are provided:
-    - Preset TLS via simple --param "preset=tls,preset_kwargs=omega=0.242,mu12=187,orientation=2,pe=1e-4"
+    - Preset TLS via simple --param "preset=tls,preset_kwargs=omega=0.242,mu12=187,orientation=2,pe_initial=1e-4"
     - Fully custom model via --param "module=/path/spec.py,kwargs=...".
       The module must define `build_model(**kwargs)` that returns a dict with keys:
 
@@ -208,7 +212,7 @@ class QuTiPModel(DummyModel):
         # First deal with preset parsing and merging with top-level tokens.
         # Given --param `preset_kwargs=omega=0.242,mu12=187,orientation=2,pe=1e-4`, the mxl_driver will
         # parse it as `preset_kwargs=omega=0.242; mu12=187; orientation=2; pe=1e-4` (splitted by the comma).
-        # By `default, mu12=187; orientation=2; pe=1e-4` will be merged into extra dict. We need to collect
+        # By default, `mu12=187; orientation=2; pe=1e-4` will be merged into extra dict. We need to collect
         # them back to preset_kwargs for the preset model to consume. This brings some inconvenience.
 
         # 1. given known subkeys for the TLS preset
@@ -221,20 +225,20 @@ class QuTiPModel(DummyModel):
             "gamma_dephase",
         }
 
-        # 1. recover the first hit of 'preset_kwargs'
+        # 2. recover the first hit of 'preset_kwargs'
         self.preset = preset.lower().strip()
-        self.preset_kwargs = _parse_kwargs_string(_strip_quotes(preset_kwargs))
+        self.preset_kwargs = _parse_kwargs_string(preset_kwargs)
 
-        # 2. merge available top-level tokens in **extra** to TLS preset
+        # 3. merge available top-level tokens in **extra** to TLS preset
         for k in list(extra.keys()):
             if k in _tls_keys:
                 # here we do not attempt to pop extra[k] to avoid removing user module params
                 self.preset_kwargs[k] = extra[k]
 
-        # 3. deal with module path and module kwargs in a similar way
+        # 4. deal with module path and module kwargs in a similar way
         self.module_path = module
         # here only the first hit of 'kwargs' is recovered
-        self.module_kwargs = _parse_kwargs_string(_strip_quotes(kwargs))
+        self.module_kwargs = _parse_kwargs_string(kwargs)
 
         # if user chose custom module, *assume* any remaining extra items
         # are intended for build_model(**kwargs) unless they are our own config flags.
@@ -279,6 +283,9 @@ class QuTiPModel(DummyModel):
         # operators for evaluating analytical dmu/dt
         self._dmudt_op = {}
 
+        # whether restarted from checkpoint
+        self.restarted = False
+
     # ----------------- heavy-load initialization -----------------
 
     def initialize(self, dt_new, molecule_id):
@@ -291,9 +298,13 @@ class QuTiPModel(DummyModel):
         self.dt = float(dt_new)
         self.molecule_id = int(molecule_id)
 
+        self.checkpoint_filename = {}
+        self.checkpoint_filename["rho"] = f"qutip_rho_{self.molecule_id}.qu"
+        self.checkpoint_filename["meta"] = f"qutip_meta_{self.molecule_id}.npz"
+
         # Build model either from preset or user module
         if self.preset == "tls" and self.module_path is None:
-            cfg = _make_tls_preset(**self.preset_kwargs)
+            cfg = _build_model_tls(**self.preset_kwargs)
         elif self.preset == "custom" and self.module_path is not None:
             mod = _load_spec_module(self.module_path)
             cfg = mod.build_model(**self.module_kwargs)
@@ -337,9 +348,10 @@ class QuTiPModel(DummyModel):
         # optional restart
         if self.restart and self.checkpoint:
             self._reset_from_checkpoint()
+            self.restarted = True
 
         # calculate initial dipole
-        self._mu_curr = _expect_mu_vector(self.rho, self.mu_ops)
+        self._mu_curr = _calc_mu_vector_expectation(self.rho, self.mu_ops)
 
         # construct operators for analytical dmu/dt
         # dmu_k/dt = i*[H0, mu_k] - i sum_j E_j*[mu_j, mu_k] + sum_j [c_j^dag * mu_k * c_j * rho - 0.5 * {c_j^dag * c_j, mu_k}]
@@ -350,7 +362,7 @@ class QuTiPModel(DummyModel):
                 mu_k = self.mu_ops.get(ax, None)
                 if mu_k is None:
                     continue
-                # K0 = i*[H0, mu_k]
+                # K0 = i * [H0, mu_k]
                 K0 = 1j * (self.H0 * mu_k - mu_k * self.H0)
                 # Kj = -i * [mu_j, mu_k]
                 Kj = {}
@@ -408,7 +420,7 @@ class QuTiPModel(DummyModel):
         if self.mu_ops["z"] is not None:
             H = H - float(E_vec[2]) * self.mu_ops["z"]
 
-        # Single “macro” step: piecewise-constant E over [0, dt]
+        # Single "macro" step: piecewise-constant E over [0, dt]
         res = qt.mesolve(H, self.rho, tlist=[0.0, self.dt], c_ops=self.c_ops, e_ops=[])
         self.rho = res.states[-1]
 
@@ -435,7 +447,7 @@ class QuTiPModel(DummyModel):
             self._lindblad_step(self.E_vec)
 
         self.t += self.dt
-        self._mu_curr = _expect_mu_vector(self.rho, self.mu_ops)
+        self._mu_curr = _calc_mu_vector_expectation(self.rho, self.mu_ops)
 
     def calc_amp_vector(self):
         """
@@ -466,9 +478,17 @@ class QuTiPModel(DummyModel):
             print(f"[QuTiPModel {self.molecule_id}] d<mu>/dt = {amp}")
         return amp
 
-    # ----------------- aux / checkpoint -----------------
+    # ------------ optional operation / checkpoint --------------
 
     def append_additional_data(self):
+        """
+        Append additional data to be sent back to MaxwellLink, which can be retrieved by the user
+        via the Python interface: maxwelllink.SocketMolecule.additional_data_history, where
+        additional_data_history is a list of dictionaries.
+
+        Returns:
+        - A dictionary containing additional data.
+        """
         data = {
             "time_au": self.t,
             "mu_x_au": float(self._mu_curr[0]),
@@ -485,18 +505,33 @@ class QuTiPModel(DummyModel):
         return data
 
     def _dump_to_checkpoint(self):
-        qt.qsave(self.rho, f"qutip_rho_{self.molecule_id}.qu")
+        """
+        Dump the internal state of the model to a checkpoint.
+        """
+        qt.qsave(self.rho, self.checkpoint_filename["rho"])
         np.savez(
-            f"qutip_meta_{self.molecule_id}.npz",
+            self.checkpoint_filename["meta"],
             t=self.t,
             mu_prev=self._mu_prev,
             mu_curr=self._mu_curr,
         )
 
     def _reset_from_checkpoint(self):
-        try:
-            self.rho = qt.qload(f"qutip_rho_{self.molecule_id}.qu")
-            meta = np.load(f"qutip_meta_{self.molecule_id}.npz")
+        """
+        Reset the internal state of the model from a checkpoint.
+        """
+        if not os.path.exists(self.checkpoint_filename["rho"]) or not os.path.exists(
+            self.checkpoint_filename["meta"]
+        ):
+            # No checkpoint file found means this driver has not been paused or terminated abnormally
+            # so we just start fresh.
+            if self.verbose:
+                print(
+                    f"[QuTiPModel] No checkpoint file found for id={self.molecule_id}, starting fresh."
+                )
+        else:
+            self.rho = qt.qload(self.checkpoint_filename["rho"])
+            meta = np.load(self.checkpoint_filename["meta"])
             self.t = float(meta["t"])
             self._mu_prev = np.asarray(meta["mu_prev"], float)
             self._mu_curr = np.asarray(meta["mu_curr"], float)
@@ -504,12 +539,11 @@ class QuTiPModel(DummyModel):
                 print(
                     f"[QuTiPModel] Restarted from checkpoint for id={self.molecule_id}"
                 )
-        except Exception:
-            if self.verbose:
-                print("[QuTiPModel] No checkpoint found; starting fresh.")
 
     def _snapshot(self):
-        # Deep copy minimal state for stage/commit
+        """
+        Return a snapshot of the internal state for propagation. Deep copy the arrays to avoid mutation issues.
+        """
         return {
             "time": self.t,
             "rho": self.rho.full().copy(),
@@ -518,6 +552,9 @@ class QuTiPModel(DummyModel):
         }
 
     def _restore(self, snapshot):
+        """
+        Restore the internal state from a snapshot.
+        """
         self.t = snapshot["time"]
         self.rho = qt.Qobj(snapshot["rho"])
         self._mu_prev = snapshot["mu_prev"].copy()

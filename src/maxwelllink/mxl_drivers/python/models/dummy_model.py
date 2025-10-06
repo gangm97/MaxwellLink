@@ -94,24 +94,20 @@ class DummyModel:
         data = {}
         return data
 
-    def _dump_to_checkpoint(self, molid):
+    def _dump_to_checkpoint(self):
         """
         Dump the internal state of the model to a checkpoint. Please implement this method if checkpointing is needed.
 
         This method can be *optionally* overridden by subclasses to implement specific checkpoint logic.
-
-        + **`molid`**: Molecule ID for checkpointing.
         """
         pass
 
-    def _reset_from_checkpoint(self, molid):
+    def _reset_from_checkpoint(self):
         """
         Reset the internal state of the model from a checkpoint. Please implement this method if one needs to restart
         from a checkpoint (done in the self.initialize() stage).
 
         This method can be *optionally* overridden by subclasses to implement specific reset logic.
-
-        + **`molid`**: Molecule ID for checkpointing.
         """
         pass
 
@@ -197,7 +193,7 @@ class DummyModel:
 
         # Optionally checkpointing
         if self.checkpoint:
-            self._dump_to_checkpoint(self.molecule_id)
+            self._dump_to_checkpoint()
 
         # Clear staging
         self._preview = None

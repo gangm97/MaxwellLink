@@ -182,27 +182,23 @@ class TLSModel(DummyModel):
         data["Pge_imag"] = np.imag(self.rho[0, 1])
         return data
 
-    def _dump_to_checkpoint(self, molid):
+    def _dump_to_checkpoint(self):
         """
-        Dump the internal state of the model to a checkpoint. The molid is not used here but
-        included for consistency. self.checkpoint_filename includes molid at self.initialize().
-
-        + **`molid`**: Molecule ID for checkpointing.
+        Dump the internal state of the model to a checkpoint.
+        self.checkpoint_filename includes molid at self.initialize().
         """
         np.savez(self.checkpoint_filename, density_matrix=self.rho, time=self.t)
 
-    def _reset_from_checkpoint(self, molid):
+    def _reset_from_checkpoint(self):
         """
         Reset the internal state of the model from a checkpoint.
-
-        + **`molid`**: Molecule ID for checkpointing.
         """
         if not os.path.exists(self.checkpoint_filename):
             # No checkpoint file found means this driver has not been paused or terminated abnormally
             # so we just start fresh.
             print(
                 "[checkpoint] No checkpoint file found for molecule ID %d, starting fresh."
-                % molid
+                % self.molecule_id
             )
         else:
             data = np.load(self.checkpoint_filename)
