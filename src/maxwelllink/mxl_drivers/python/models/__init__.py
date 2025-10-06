@@ -3,7 +3,14 @@ from importlib import import_module
 from functools import lru_cache
 from typing import Callable, Dict
 
-__all__ = ["DummyModel", "TLSModel", "RTTDDFTModel", "__drivers__"]
+__all__ = [
+    "DummyModel",
+    "TLSModel",
+    "QuTiPModel",
+    "RTTDDFTModel",
+    "ASEModel",
+    "__drivers__",
+]
 
 
 # --- Lazy attribute loader for direct class access ---
@@ -24,6 +31,10 @@ def __getattr__(name: str):
         from .rttddft_model import RTTDDFTModel
 
         return RTTDDFTModel
+    if name == "ASEModel":
+        from .ase_model import ASEModel
+
+        return ASEModel
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -47,6 +58,8 @@ def _factory(cls_path: str) -> Callable:
 
     def _ctor(*args, **kwargs):
         Cls = _load(cls_path)
+        print(f"[mxl_drivers] Using quantum dynamics model: {Cls.__name__}")
+        print(f"[mxl_drivers] Model parameters: {kwargs}")
         return Cls(*args, **kwargs)
 
     return _ctor
@@ -58,4 +71,5 @@ __drivers__: Dict[str, Callable] = {
     "tls": _factory(".tls_model:TLSModel"),
     "qutip": _factory(".qutip_model:QuTiPModel"),
     "rttddft": _factory(".rttddft_model:RTTDDFTModel"),
+    "ase": _factory(".ase_model:ASEModel"),
 }

@@ -5,7 +5,7 @@ class DummyModel:
     """
     A dummy quantum dynamics model for demonstration purposes.
     This class serves as a template for implementing specific quantum dynamics models.
-    It provides the necessary interface for integration with the SocketMEEP framework.
+    It provides the necessary interface for integration with the MaxwellLink framework.
     """
 
     def __init__(self, verbose=False, checkpoint=False, restart=False):
@@ -14,16 +14,20 @@ class DummyModel:
 
         TIPS: The computational load of this step should be minimal.
 
+        This method *should be* overridden by subclasses if more member variables need to be initialized.
+
         + **`verbose`** (bool): Whether to print verbose output. Default is False.
+        + **`checkpoint`** (bool): Whether to enable checkpointing. Default is False.
+        + **`restart`** (bool): Whether to restart from a checkpoint if available. Default is False.
         """
         self.dt = 0.0  # time step in a.u.
         self.molecule_id = -1  # molecule ID
         self.verbose = verbose
         self.t = 0.0  # current time in a.u.
 
-        self._preview = None  # deep-copied model after the proposed step
-        self._pending_amp = None  # amplitude from the previewed step
-        self._have = False
+        self._preview = None  # deep-copied molecular state after the proposed step
+        self._pending_amp = None  # amplitude (dmu/dt) from the previewed step
+        self._have = False  # whether a step has been finished and amplitude is ready
         self.checkpoint = checkpoint
         self.restart = restart
 
@@ -35,11 +39,15 @@ class DummyModel:
 
         TIPS: The major computational load of initialization should be done here.
 
+        This method *should be* overridden by subclasses if more member variables need to be initialized.
+
         + **`dt_new`** (float): The new time step in atomic units (a.u.).
-        + **`molecule_id`** (int): The ID of the molecule.
+        + **`molecule_id`** (int): The ID of the molecule assigned by SocketHub.
         """
-        self.dt = float(dt_new)
-        self.molecule_id = int(molecule_id)
+        self.dt = float(dt_new)  # reset the time step
+        self.molecule_id = int(
+            molecule_id
+        )  # reset the molecule ID assigned by SocketHub
         # perform any additional initialization here as needed
 
     def propagate(self, effective_efield_vec):
@@ -50,6 +58,8 @@ class DummyModel:
         TIPS: One can implement sub-steps (running many steps for the model per MEEP call) or
         macrosteps (running one step for the model per few MEEP calls) within this function as needed.
 
+        This method *must be* overridden by subclasses.
+
         + **`effective_efield_vec`**: Effective electric field vector in the form [Ex, Ey, Ez].
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
@@ -59,46 +69,62 @@ class DummyModel:
         Update the source amplitude vector after propagating this molecule for one time step.
         This method should be overridden by subclasses to implement specific source update logic.
 
-        Amplitude vector should be calculated by dP/dt, where P is the classical dipole vector of
+        Amplitude vector should be calculated by dmu/dt, where mu is the classical dipole vector of
         the molecule.
 
+        This method *must be* overridden by subclasses.
+
         Returns:
-        - A numpy array representing the amplitude vector in the form [dPx/dt, dPy/dt, dPz/dt].
+        - A numpy array representing the amplitude vector in the form [dmu_x/dt, dmu_y/dt, dmu_z/dt].
         """
         # update the amplitude vector here as needed
         return np.array([0.0, 0.0, 0.0])
 
     def append_additional_data(self):
         """
-        Append additional data to be sent back to MEEP, which can be retrieved by the user
-        via the Python interface of MEEP: mp.SocketMolecule.additional_data_history.
+        Append additional data to be sent back to MaxwellLink, which can be retrieved by the user
+        via: MaxwellLink.SocketMolecule.additional_data_history, where additional_data_history is a list of
+        dictionaries.
 
-        This method can be overridden by subclasses to include specific data.
+        This method can be *optionally* overridden by subclasses to send additional data to MaxwellLink.
+
         Returns:
         - A dictionary containing additional data.
         """
         data = {}
         return data
 
-    def _dump_to_checkpoint(self):
+    def _dump_to_checkpoint(self, molid):
         """
         Dump the internal state of the model to a checkpoint. Please implement this method if checkpointing is needed.
-        This method can be overridden by subclasses to implement specific checkpoint logic.
+
+        This method can be *optionally* overridden by subclasses to implement specific checkpoint logic.
+
+        + **`molid`**: Molecule ID for checkpointing.
         """
         pass
 
-    def _reset_from_checkpoint(self):
+    def _reset_from_checkpoint(self, molid):
         """
         Reset the internal state of the model from a checkpoint. Please implement this method if one needs to restart
         from a checkpoint (done in the self.initialize() stage).
 
-        This method can be overridden by subclasses to implement specific reset logic.
+        This method can be *optionally* overridden by subclasses to implement specific reset logic.
+
+        + **`molid`**: Molecule ID for checkpointing.
         """
         pass
 
     def _snapshot(self):
         """
         Return a snapshot of the internal state for propagation. Deep copy is required.
+
+        This method can be *optionally* overridden by subclasses if the stage-commit protocol is used.
+
+        If not overridden, only the time variable will be snapshotted.
+
+        Returns:
+        - A dictionary containing the snapshot of the internal state.
         """
         snapshot = {
             "time": self.t,
@@ -108,10 +134,24 @@ class DummyModel:
     def _restore(self, snapshot):
         """
         Restore the internal state from a snapshot.
+
+        This method can be *optionally* overridden by subclasses if the stage-commit protocol is used.
+
+        If not overridden, only the time variable will be restored, and the stage-commit protocol defined below
+        (self.stage_step and self.commit_step) is not used.
         """
         self.t = snapshot["time"]
 
     def stage_step(self, E_vec):
+        """
+        Stage a propagation step with the given effective electric field vector.
+        This method performs the propagation and calculates the amplitude vector, but does not commit the changes to
+        the internal state. The result can be committed later using the self.commit_step method.
+
+        This method should *not* be overridden by subclasses.
+
+        + **`E_vec`**: Effective electric field vector in the form [Ex, Ey, Ez].
+        """
         # 1. work on a deep copy so committed state is untouched
         previous_state = self._snapshot()
         self.propagate(effective_efield_vec=E_vec)
@@ -126,18 +166,36 @@ class DummyModel:
         self._have = True
 
     def have_result(self):
+        """
+        Check if a staged step is ready to be committed.
+
+        This method should *not* be overridden by subclasses.
+
+        Returns:
+        - A boolean indicating whether a staged step is ready.
+        """
         return self._have
 
     def commit_step(self):
-        """Commit the previewed step and return the staged amplitude."""
+        """
+        Commit the previewed step and return the staged amplitude.
+        This method applies the changes from the staged step to the internal state and returns the calculated
+        amplitude vector.
+
+        This method should *not* be overridden by subclasses.
+
+        Returns:
+        - A numpy array representing the amplitude vector in the form [dmu_x/dt, dmu_y/dt, dmu_z/dt].
+        """
         if not self._have or self._preview is None or self._pending_amp is None:
-            # Defensive: no result staged – return zeros
+            # No result staged: return zeros
             return np.zeros(3, float)
 
-        # Atomically replace the committed model state
+        # Commit the new molecular state
         self._restore(self._preview)
         amp = self._pending_amp
 
+        # Optionally checkpointing
         if self.checkpoint:
             self._dump_to_checkpoint(self.molecule_id)
 

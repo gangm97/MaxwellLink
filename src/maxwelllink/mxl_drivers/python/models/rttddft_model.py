@@ -1,20 +1,18 @@
 import numpy as np
 from scipy.linalg import expm
 from scipy.linalg import fractional_matrix_power as mat_pow
-
-np.set_printoptions(precision=6, linewidth=200, suppress=True, threshold=2000)
+import os
 
 try:
     from .dummy_model import DummyModel
 except:
     from dummy_model import DummyModel
-import os
 
 
 class RTTDDFTModel(DummyModel):
     """
     A real-time time-dependent density functional theory (RT-TDDFT) quantum dynamics model using the Psi4 quantum chemistry package.
-    This class implements a RT-TDDFT model for quantum dynamics, which can be integrated with the SocketMEEP framework.
+    This class implements a RT-TDDFT model for quantum dynamics, which can be integrated with the MaxwellLink framework.
 
     Example
     -------
@@ -57,10 +55,10 @@ class RTTDDFTModel(DummyModel):
         remove_permanent_dipole: bool = False,
     ):
         """
-        Initialize the necessary parameters for the dummy quantum dynamics model.
+        Initialize the necessary parameters for the RT-TDDFT quantum dynamics model.
 
         + **`engine`** (str): The computational engine to use (e.g., "psi4"). Default is "psi4". Currently, only "psi4" is supported.
-        + **`molecule_xyz`** (str): Path to the XYZ file containing the molecular structure. The second line should contain the charge and multiplicity.
+        + **`molecule_xyz`** (str): Path to the XYZ file containing the molecular structure. The second line of the XYZ file may contain the charge and multiplicity.
         + **`functional`** (str): Any Psi4 functional label, e.g. "PBE", "B3LYP", "SCAN", "PBE0". Default is "SCF" (Hartree-Fock).
         + **`basis`** (str): Any basis set label recognized by Psi4, e.g. "sto-3g", "6-31g", "cc-pVDZ". Default is "sto-3g".
         + **`dt_rttddft_au`** (float): Time step for real-time TDDFT propagation in atomic units (a.u.). Default is 0.04 a.u.
@@ -69,7 +67,6 @@ class RTTDDFTModel(DummyModel):
         + **`delta_kick_au`** (float): Strength of the initial delta-kick perturbation along the x, y, and z direction in atomic units (a.u.).
         Default is 0.0e-3 a.u. If this value is set to a non-zero value, the driver will apply a delta-kick perturbation at t=0 to initiate the dynamics.
         With this delta-kick, and also setting the MEEP coupling to zero, one can compute the conventional RT-TDDFT linear absorption spectrum of the molecule.
-        This functinonality is mainly for testing and validation purposes.
         + **`delta_kick_direction`** (str): Direction of the initial delta-kick perturbation. Can be "x", "y", "z", "xy", "xz", "yz", or "xyz". Default is "xyz".
         + **`memory`** (str): Memory allocation for Psi4, e.g. "8GB", "500MB". Default is "8GB".
         + **`num_threads`** (int): Number of CPU threads to use in Psi4. Default is 1.
@@ -118,7 +115,8 @@ class RTTDDFTModel(DummyModel):
         self.memory = memory
         self.num_threads = num_threads
         self.remove_permanent_dipole = remove_permanent_dipole
-        self.t = 0.0  # current time in a.u.
+        # current time in a.u.
+        self.t = 0.0  
         self.count = 0
 
         # optional, checking whether the driver can be paused and resumed properly
@@ -177,7 +175,12 @@ class RTTDDFTModel(DummyModel):
         Initialize Psi4 and set up the molecule, basis set, and functional.
         This method is called during the first propagation step after receiving the molecule ID.
         """
-        import psi4
+        try:
+            import psi4
+        except ImportError as e:
+            raise ImportError(
+                "RTTDDFTModel with engine='psi4' requires Psi4. Install with `conda install conda-forge::psi4`."
+            ) from e
 
         # Set memory and output file for Psi4
         psi4.set_memory(self.memory)

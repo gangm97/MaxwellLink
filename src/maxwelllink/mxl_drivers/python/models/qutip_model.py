@@ -11,7 +11,7 @@ try:
     import qutip as qt
 except ImportError as e:
     raise ImportError(
-        "QuTiPModel requires qutip. Install with `pip install qutip`."
+        "QuTiPModel requires qutip. Install with `conda install conda-forge::qutip`."
     ) from e
 
 
