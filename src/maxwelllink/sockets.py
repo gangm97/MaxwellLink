@@ -1,9 +1,9 @@
 """
 Socket layer for MaxwellLink drivers and servers in a single file.
-Modeled after i-PI's socket protocol (https://ipi-code.org/), with extensions for MaxwellLink.
+The socket protocol of MaxwellLink is based on i-PI's socket protocol (https://ipi-code.org/).
 
 Public API:
-- SocketHub: multi-client server/poller modeled after i-PI's server
+- SocketHub: multi-client server/poller for handling many driver connections with the FDTD engine
 - Protocol constants: STATUS, READY, HAVEDATA, NEEDINIT, INIT, ...
 - EM aliases: FIELDDATA, GETSOURCE, SOURCEREADY  (map 1:1 to POSDATA/GETFORCE/FORCEREADY)
 - Low-level helpers: send_msg, recv_msg, send_array/recv_array, etc.
@@ -19,8 +19,8 @@ import numpy as np
 _INT32 = struct.Struct("<i")
 _FLOAT64 = struct.Struct("<d")
 
-HEADER_LEN = 12  # i-PI fixed header width (ASCII, space-padded)
-
+# Fixed header width (ASCII, space-padded)
+HEADER_LEN = 12
 # Canonical i-PI message codes
 STATUS = b"STATUS"
 READY = b"READY"
@@ -30,8 +30,8 @@ INIT = b"INIT"
 POSDATA = b"POSDATA"
 GETFORCE = b"GETFORCE"
 FORCEREADY = b"FORCEREADY"
-STOP = b"STOP"  # server -> client: please shut down cleanly
-BYE = b"BYE"  # client -> server: acknowledged, exiting
+STOP = b"STOP"
+BYE = b"BYE"
 
 # EM aliases for readability (same wire format)
 FIELDDATA = POSDATA
@@ -73,25 +73,6 @@ def recv_msg(sock: socket.socket) -> bytes:
     """Receive 12-byte ASCII header."""
     hdr = _recvall(sock, HEADER_LEN)
     return hdr.rstrip()
-
-
-"""
-def send_array(sock: socket.socket, arr, dtype) -> None:
-    a = np.asarray(arr, dtype=dtype, order="C")
-    sock.sendall(a.tobytes())
-
-def recv_array(sock: socket.socket, shape, dtype):
-    nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
-    buf = _recvall(sock, nbytes)
-    out = np.frombuffer(buf, dtype=dtype).copy()
-    return out.reshape(shape, order="C")
-
-def send_int(sock: socket.socket, x: int) -> None:
-    send_array(sock, np.array([x], dtype=DT_INT), DT_INT)
-
-def recv_int(sock: socket.socket) -> int:
-    return int(recv_array(sock, (1,), DT_INT)[0])
-"""
 
 
 def send_array(sock: socket.socket, arr, dtype) -> None:
@@ -251,8 +232,13 @@ def am_master():
 
 
 class SocketHub:
-    """Accepts many driver connections, matches them to molecule ids, and runs i-PI style polling.
-    Apart from the initialization, any member function should only be called from the master process.
+    """
+    A socket server that handles multiple driver connections with the FDTD engine.
+
+    The major functionality of this class is to:
+
+    - Accept many driver connections with the FDTD engine, including sending and receiving data.
+    - Manage the lifecycle of driver connections, including initialization, polling, reconnection, and cleanup.
     """
 
     def __init__(
@@ -263,6 +249,19 @@ class SocketHub:
         timeout: float = 60.0,
         latency: float = 0.01,
     ):
+        """
+        + **`host`** (str): Host address to bind the server. Default is None.
+        + **`port`** (int): Port number to bind the server. Default is 31415.
+        + **`unixsocket`** (str): Path to a Unix socket file. Default is None (no Unix socket).
+        Using a Unix socket is recommended for **local connections** for the improved performance.
+        If unixsocket is given a str, it will be created under /tmp/socketmxl_<str>. When using a
+        Unix socket, the host and port arguments are ignored and should not be provided.
+        + **`timeout`** (float): Timeout for socket operations in seconds. Default is 60.0 (s). This timeout controls
+        when SocketHub will consider a driver connection to be dead and clean it up. If the computational time for
+        each driver step is expected to be long, a larger timeout may be desirable.
+        + **`latency`** (float): Latency for socket operations in seconds. Default is 0.01.
+        For **local connections**, a lower latency, such as **1e-4**, may be desirable.
+        """
         self.unixsocket_path = None
         if am_master():
             if unixsocket:
@@ -293,9 +292,6 @@ class SocketHub:
                             probe.close()
                         except Exception:
                             pass
-                # allow stale file cleanup
-                # try: os.unlink(unixsocket)
-                # except FileNotFoundError: pass
                 self.serversock.bind(unixsocket)
                 self._where = unixsocket
             else:
@@ -311,106 +307,33 @@ class SocketHub:
 
             self.timeout = float(timeout)
             self.latency = float(latency)
-            self.clients: Dict[int, ClientState] = {}  # key: molecule_id or temp id
-            self.addrmap: Dict[str, int] = {}  # peer -> molecule_id
+
+            # key: molecule_id or temp id
+            self.clients: Dict[int, ClientState] = {}
+
+            # peer -> molecule_id
+            self.addrmap: Dict[str, int] = {}
             self._stop = False
             self._lock = threading.RLock()
             self._accept_th = threading.Thread(target=self._accept_loop, daemon=True)
             self._accept_th.start()
 
-        self.bound: Dict[int, ClientState] = (
-            {}
-        )  # molecule_id -> ClientState (locked client)
-        self.expected: set[int] = set()  # molecule ids we expect to serve
+        # molecule_id -> ClientState (locked client)
+        self.bound: Dict[int, ClientState] = {}
 
-        self.paused = False  # global pause when any driver is down
+        # molecule ids we expect to serve
+        self.expected: set[int] = set()
 
-        self._inflight = None  # holds a frozen barrier until it successfully commits
+        # global pause when any driver is down
+        self.paused = False
 
-    def graceful_shutdown(self, reason: Optional[str] = None, wait: float = 2.0):
-        """Politely ask all connected drivers to exit, and wait briefly for BYE."""
-        with self._lock:
-            for st in list(self.clients.values()):
-                if not st or not st.alive:
-                    continue
-                try:
-                    send_msg(st.sock, STOP)
-                except Exception:
-                    st.alive = False
-                    if st.molecule_id >= 0 and self.bound.get(st.molecule_id) is st:
-                        self._log(
-                            f"DISCONNECTED: mol {st.molecule_id} from {st.address}"
-                        )
-                        self.bound[st.molecule_id] = None
-                        self._pause()
-
-        deadline = time.time() + float(wait)
-        while time.time() < deadline:
-            time.sleep(self.latency)
-            with self._lock:
-                for st in list(self.clients.values()):
-                    if not st or not st.alive:
-                        continue
-                    try:
-                        # Make reads snappy during shutdown
-                        st.sock.settimeout(self.latency)
-                        msg = recv_msg(st.sock)
-                        if msg == BYE:
-                            # Clean close on our side
-                            st.alive = False
-                            if (
-                                st.molecule_id >= 0
-                                and self.bound.get(st.molecule_id) is st
-                            ):
-                                self._log(
-                                    f"DISCONNECTED: mol {st.molecule_id} from {st.address}"
-                                )
-                                self.bound[st.molecule_id] = None
-                            try:
-                                st.sock.shutdown(socket.SHUT_RDWR)
-                            except Exception:
-                                pass
-                            try:
-                                st.sock.close()
-                            except Exception:
-                                pass
-                    except (socket.timeout, SocketClosed, OSError):
-                        # Either no message yet or peer closed already; keep sweeping
-                        continue
-
-    def stop(self):
-        """Stop accept loop, tell clients to exit, then close everything."""
-        # First, stop accepting new connections
-        self._stop = True
-        try:
-            self.serversock.close()
-        except Exception:
-            pass
-
-        # Then, gracefully end existing sessions
-        try:
-            self.graceful_shutdown(wait=max(2.0, 10 * self.latency))
-        finally:
-            with self._lock:
-                for st in list(self.clients.values()):
-                    try:
-                        st.sock.close()
-                    except Exception:
-                        pass
-
-        # if unix socket, remove the path
-        if self.unixsocket_path and os.path.exists(self.unixsocket_path):
-            os.unlink(self.unixsocket_path)
-            print(f"[SocketHub] Unlinked unix socket path {self.unixsocket_path}")
-
-    # Quality of life: use with-statement to auto-shutdown
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.stop()
+        # holds a frozen barrier until it successfully commits
+        self._inflight = None
 
     def _accept_loop(self):
+        """
+        Accept loop thread: accept new connections and add to self.clients with temp id.
+        """
         while not self._stop:
             try:
                 csock, addr = self.serversock.accept()
@@ -435,11 +358,23 @@ class SocketHub:
                 self.clients[id(csock)] = st
 
     def _maybe_init_client(self, st: ClientState, init_payload: dict):
-        """Handle NEEDINIT by sending INIT with JSON (contains molecule_id & unit scales)."""
+        """
+        Handle NEEDINIT by sending INIT with JSON (contains molecule_id & unit scales).
+
+        + **`st`** (ClientState): The client state to initialize.
+        + **`init_payload`** (dict): The initialization payload to send.
+        """
         pack_init(st.sock, init_payload)
         st.initialized = True
 
     def _dispatch_field(self, st: ClientState, efield_au: np.ndarray, meta: dict):
+        """
+        Send FIELDDATA (POSDATA) with the given E-field vector in a.u.
+
+        + **`st`** (ClientState): The client state to send the field to.
+        + **`efield_au`** (np.ndarray): The electric field vector in atomic units (a.u.).
+        + **`meta`** (dict): Additional metadata to attach to this send.
+        """
         try:
             send_msg(st.sock, FIELDDATA)
             I = np.eye(3, dtype=DT_FLOAT)
@@ -460,7 +395,15 @@ class SocketHub:
             raise
 
     def _query_result(self, st: ClientState) -> Tuple[np.ndarray, bytes]:
-        """Send GETSOURCE (GETFORCE) and read SOURCEREADY (FORCEREADY)."""
+        """
+        Send GETSOURCE (GETFORCE) and read SOURCEREADY (FORCEREADY).
+
+        + **`st`** (ClientState): The client state to query.
+
+        Returns: (amplitude_vec3, extra_bytes)
+        - amplitude_vec3: The source amplitude vector in the form [dmu_x/dt, dmu_y/dt, dmu_z/dt].
+        - extra_bytes: Additional bytes sent by the driver.
+        """
         try:
             send_msg(st.sock, GETSOURCE)
             msg = recv_msg(st.sock)
@@ -483,7 +426,14 @@ class SocketHub:
     def _bind_client_locked(
         self, st: ClientState, molid: int, init_payload: dict, st_key
     ):
-        """Bind client to molecule id if free; otherwise leave client unbound."""
+        """
+        Bind client to molecule id if free; otherwise leave client unbound.
+
+        + **`st`** (ClientState): The client state to bind.
+        + **`molid`** (int): The molecule id to bind to.
+        + **`init_payload`** (dict): The initialization payload to send if binding.
+        + **`st_key`** (int): The temporary key of the client in self.clients.
+        """
         if self.bound.get(molid) is None:
             self._maybe_init_client(st, init_payload)
             st.molecule_id = molid
@@ -503,16 +453,23 @@ class SocketHub:
         return False
 
     def _log(self, *a):
+        """Log message helper"""
         print("[SocketHub]", *a)
 
     def _pause(self):
+        """Pause the socket hub."""
         self.paused = True
 
     def _resume(self):
+        """Resume the socket hub."""
         self.paused = False
 
     def _reset_inflight_for(self, molid: int):
-        """If a barrier is frozen, force re-dispatch for this molid on reconnect."""
+        """
+        If a barrier is frozen, force re-dispatch for this molid on reconnect.
+
+        + **`molid`** (int): The molecule id to reset in the inflight barrier.
+        """
         if self._inflight and (molid in self._inflight["wants"]):
             self._inflight["sent"][molid] = False
             self._inflight["ready"][molid] = False
@@ -520,8 +477,15 @@ class SocketHub:
     # -------------- public API --------------
 
     def register_molecule(self, molecule_id: int) -> None:
-        """Reserve a slot for this molecule id (client may connect later)."""
+        """
+        Reserve a slot for this molecule id (client may connect later).
+
+        + **`molecule_id`** (int): The ID of the molecule.
+        """
         with self._lock:
+            # If already registered, raising a ValueError
+            if molecule_id in self.expected:
+                raise ValueError(f"Molecule ID {molecule_id} already registered!")
             # No explicit state needed yet; client binds on INIT.
             self.expected.add(int(molecule_id))
             self.bound.setdefault(int(molecule_id), None)
@@ -529,9 +493,18 @@ class SocketHub:
     def step_barrier(
         self, requests: Dict[int, dict], timeout: Optional[float] = None
     ) -> Dict[int, np.ndarray]:
-        """One i-PI style "dispatch all then collect" cycle.
-        requests: {molecule_id: {"efield_au": (3,), "meta": {...}, "init": {...}}}
-        Returns:  {molecule_id: amplitude_vec3}
+        """
+        Perform a barrier step: dispatch fields and collect source amplitudes. This method is the
+        core of the SocketHub's functionality, coordinating the communication between the FDTD engine and
+        multiple molecular drivers.
+
+        + **`requests`** (dict): A dictionary mapping molecule IDs to their respective field requests.
+          Each request should contain:
+            - "efield_au": A tuple or list of three floats representing the electric field vector in atomic units (a.u.).
+            - "meta": (Optional) A dictionary of additional metadata to attach to this send.
+            - "init": (Optional) A dictionary containing initialization parameters for the molecule.
+        + **`timeout`** (float, optional): Maximum time to wait for the barrier step to complete.
+        If None, uses the default timeout set during initialization.
         """
         if self.paused:
             return {}
@@ -557,9 +530,6 @@ class SocketHub:
             wants = set(self._inflight["wants"])
 
         ready = self._inflight["ready"]
-
-        # wants = set(requests.keys())
-        # ready = {mid: False for mid in wants}
 
         # --- hard gate: do not dispatch fields until everyone is bound ---
         ids = set(int(k) for k in requests.keys())
@@ -598,7 +568,7 @@ class SocketHub:
         # --- normal step_barrier continues below ---
         aborted = False
         with self._lock:
-            # 1) poll and init/dispatch
+            # 1. poll and init/dispatch
             for st_key, st in list(self.clients.items()):
                 try:
                     send_msg(st.sock, STATUS)
@@ -659,12 +629,12 @@ class SocketHub:
                         ready[st.molecule_id] = True
                     continue
 
-            # 2) second pass: wait for all pending molecules to finish (barrier)
-            # wants = {mid for mid in requests.keys()}
+            # 2. second pass: wait for all pending molecules to finish (barrier)
             wants = set(self._inflight["wants"])
 
         if aborted:
-            return {}  # abort this barrier; caller will enter the pause path
+            # abort this barrier; caller will enter the pause path
+            return {}
 
         while time.time() < deadline and (wants - set(results.keys())):
             time.sleep(self.latency)
@@ -769,6 +739,12 @@ class SocketHub:
         return results
 
     def all_bound(self, molecule_ids, require_init=True):
+        """
+        Check if all given molecule_ids are bound (and optionally initialized).
+
+        + **`molecule_ids`** (iterable): An iterable of molecule IDs to check.
+        + **`require_init`** (bool): If True, also require that the clients are initialized. Default is True.
+        """
         with self._lock:
             for mid in molecule_ids:
                 st = self.bound.get(int(mid))
@@ -781,13 +757,16 @@ class SocketHub:
     def wait_until_bound(self, init_payloads: dict, require_init=True, timeout=None):
         """
         BLOCK until all molecule_ids in init_payloads are bound.
-        init_payloads: {molid: payload_dict}  (payloads include dt_au etc.)
+
+        + **`init_payloads`** (dict): A dictionary mapping molecule IDs to their respective initialization payloads.
+          Each payload should be a dictionary containing initialization parameters for the molecule.
+        + **`require_init`** (bool): If True, also require that the clients are initialized. Default is True.
+        + **`timeout`** (float, optional): Maximum time to wait for all clients to bind. If None, uses the default timeout set during initialization.
         """
         wanted = {int(k) for k in init_payloads.keys()}
         deadline = time.time() + (timeout if timeout is not None else self.timeout)
 
         while True:
-            # Done?
             if self.all_bound(wanted, require_init=require_init):
                 self._resume()
                 return True
@@ -834,54 +813,90 @@ class SocketHub:
                             self._bind_client_locked(
                                 st, int(chosen), init_payloads[int(chosen)], st_key
                             )
-                    # Ignore READY/HAVEDATA/STATUS here; we only advance INIT
 
             if timeout is not None and time.time() > deadline:
                 return False
             time.sleep(self.latency)
 
+    def graceful_shutdown(self, reason: Optional[str] = None, wait: float = 2.0):
+        """
+        Politely ask all connected drivers to exit, and wait briefly for BYE.
 
-__all__ = [
-    # Hub
-    "SocketHub",
-    "ClientState",
-    # Exceptions / types
-    "SocketClosed",
-    "HEADER_LEN",
-    "DT_FLOAT",
-    "DT_INT",
-    # Headers
-    "STATUS",
-    "READY",
-    "HAVEDATA",
-    "NEEDINIT",
-    "INIT",
-    "POSDATA",
-    "GETFORCE",
-    "FORCEREADY",
-    "STOP",
-    "BYE",
-    # EM aliases
-    "FIELDDATA",
-    "GETSOURCE",
-    "SOURCEREADY",
-    # Helpers
-    "send_msg",
-    "recv_msg",
-    "send_array",
-    "recv_array",
-    "send_int",
-    "recv_int",
-    "send_bytes",
-    "recv_bytes",
-    # Compound payloads
-    "send_posdata",
-    "recv_posdata",
-    "send_force_ready",
-    "recv_getforce",
-    # Convenience
-    "pack_em_fieldata",
-    "pack_init",
-]
+        + **`reason`** (str): Optional reason for shutdown to log. Default is None.
+        + **`wait`** (float): Time in seconds to wait for drivers to respond. Default is 2.0 (s).
+        """
+        with self._lock:
+            for st in list(self.clients.values()):
+                if not st or not st.alive:
+                    continue
+                try:
+                    send_msg(st.sock, STOP)
+                except Exception:
+                    st.alive = False
+                    if st.molecule_id >= 0 and self.bound.get(st.molecule_id) is st:
+                        self._log(
+                            f"DISCONNECTED: mol {st.molecule_id} from {st.address}"
+                        )
+                        self.bound[st.molecule_id] = None
+                        self._pause()
 
-__version__ = "0.1.0"
+        deadline = time.time() + float(wait)
+        while time.time() < deadline:
+            time.sleep(self.latency)
+            with self._lock:
+                for st in list(self.clients.values()):
+                    if not st or not st.alive:
+                        continue
+                    try:
+                        # Make reads snappy during shutdown
+                        st.sock.settimeout(self.latency)
+                        msg = recv_msg(st.sock)
+                        if msg == BYE:
+                            # Clean close on our side
+                            st.alive = False
+                            if (
+                                st.molecule_id >= 0
+                                and self.bound.get(st.molecule_id) is st
+                            ):
+                                self._log(
+                                    f"DISCONNECTED: mol {st.molecule_id} from {st.address}"
+                                )
+                                self.bound[st.molecule_id] = None
+                            try:
+                                st.sock.shutdown(socket.SHUT_RDWR)
+                            except Exception:
+                                pass
+                            try:
+                                st.sock.close()
+                            except Exception:
+                                pass
+                    except (socket.timeout, SocketClosed, OSError):
+                        # Either no message yet or peer closed already; keep sweeping
+                        continue
+
+    def stop(self):
+        """
+        Stop accept loop, tell clients to exit, then close everything.
+        """
+        # First, stop accepting new connections
+        self._stop = True
+        try:
+            self.serversock.close()
+        except Exception:
+            pass
+
+        # Then, gracefully end existing sessions
+        try:
+            self.graceful_shutdown(wait=max(2.0, 10 * self.latency))
+        finally:
+            with self._lock:
+                for st in list(self.clients.values()):
+                    try:
+                        st.sock.close()
+                    except Exception:
+                        pass
+
+        # if unix socket, remove the path
+        if self.unixsocket_path and os.path.exists(self.unixsocket_path):
+            os.unlink(self.unixsocket_path)
+            print(f"[SocketHub] Unlinked unix socket path {self.unixsocket_path}")

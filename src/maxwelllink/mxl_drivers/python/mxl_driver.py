@@ -11,6 +11,18 @@ import socket, json
 import numpy as np
 import struct
 
+try:
+    from .models import __drivers__
+    from .models.dummy_model import DummyModel
+except ImportError:
+    from models import __drivers__
+    from models.dummy_model import DummyModel
+
+description = """
+A Python driver connecting to MaxwellLink, receiving E-field data and returning
+the source amplitude vector for a quantum dynamics model.
+"""
+
 
 # helper function to determine whether this processor is the MPI master using mpi4py
 def am_master():
@@ -27,10 +39,14 @@ def am_master():
 
 _INT32 = struct.Struct("<i")
 _FLOAT64 = struct.Struct("<d")
+# numpy dtypes on the wire
+DT_FLOAT = np.float64
+DT_INT = np.int32
 
-HEADER_LEN = 12  # i-PI fixed header width (ASCII, space-padded)
+# header width (ASCII, space-padded)
+HEADER_LEN = 12
 
-# Canonical i-PI message codes
+# Message codes similar to i-PI's socket interface
 STATUS = b"STATUS"
 READY = b"READY"
 HAVEDATA = b"HAVEDATA"
@@ -39,17 +55,13 @@ INIT = b"INIT"
 POSDATA = b"POSDATA"
 GETFORCE = b"GETFORCE"
 FORCEREADY = b"FORCEREADY"
-STOP = b"STOP"  # server -> client: please shut down cleanly
-BYE = b"BYE"  # client -> server: acknowledged, exiting
+STOP = b"STOP"
+BYE = b"BYE"
 
 # EM aliases for readability (same wire format)
 FIELDDATA = POSDATA
 GETSOURCE = GETFORCE
 SOURCEREADY = FORCEREADY
-
-# numpy dtypes on the wire (i-PI/ASE use float64 for reals, int32 for counts)
-DT_FLOAT = np.float64
-DT_INT = np.int32
 
 
 class SocketClosed(OSError):
@@ -82,25 +94,6 @@ def recv_msg(sock: socket.socket) -> bytes:
     """Receive 12-byte ASCII header."""
     hdr = _recvall(sock, HEADER_LEN)
     return hdr.rstrip()
-
-
-"""
-def send_array(sock: socket.socket, arr, dtype) -> None:
-    a = np.asarray(arr, dtype=dtype, order="C")
-    sock.sendall(a.tobytes())
-
-def recv_array(sock: socket.socket, shape, dtype):
-    nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
-    buf = _recvall(sock, nbytes)
-    out = np.frombuffer(buf, dtype=dtype).copy()
-    return out.reshape(shape, order="C")
-
-def send_int(sock: socket.socket, x: int) -> None:
-    send_array(sock, np.array([x], dtype=DT_INT), DT_INT)
-
-def recv_int(sock: socket.socket) -> int:
-    return int(recv_array(sock, (1,), DT_INT)[0])
-"""
 
 
 def send_array(sock: socket.socket, arr, dtype) -> None:
@@ -175,20 +168,8 @@ def send_force_ready(
     send_bytes(sock, more)
 
 
-# the above functions can be also obtained from maxwelllink.sockets, so we actually do not need to redefine them here in the final version of the code
-
-try:
-    from .models import __drivers__
-    from .models.dummy_model import DummyModel
-except ImportError:
-    from models import __drivers__
-    from models.dummy_model import DummyModel
-
-
-description = """
-A Python driver connecting to MaxwellLink, receiving E-field data and returning
-the source amplitude vector for a quantum dynamics model.
-"""
+# the above functions can be also obtained from maxwelllink.sockets,
+# but we copy them here to avoid circular imports.
 
 
 def read_value(s):
@@ -295,17 +276,9 @@ def run_driver(
             # One step of data from server: treat "positions" as the E-field vector in a.u.
             # This is to mirror i-pi's existing socket interface.
             cell, icell, xyz = recv_posdata(sock)
-            # print("xyz = ", xyz)
-            E = xyz[0]  # effective [Ex, Ey, Ez] (a.u.) for this molecule
-            # print(f"[molecule {molid}] Received E-field (a.u.):", E)
-
-            # ... propagate the specific molecular driver by dt_au under E field vector ..
-            # driver.propagate(effective_efield_vec=E)
-            # amp_vec = driver.calc_amp_vector()
-            # pending_amp = np.asarray(amp_vec, dtype=float)
-            # additional_data = driver.append_additional_data()
-
-            # Stage the step ONLY (no commit)
+            # effective [Ex, Ey, Ez] (a.u.) for this molecule
+            E = xyz[0]
+            # Stage the step (no commit)
             driver.stage_step(E)
 
             have_result = True
@@ -447,7 +420,7 @@ def _clean_env_for_subprocess():
         "FI_",
         "UCX_",
         "PSM2_",
-        "PMI",  # catch odd ones
+        "PMI",
     )
     for k in list(env.keys()):
         for p in prefixes:

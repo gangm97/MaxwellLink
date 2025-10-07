@@ -1,7 +1,7 @@
 """
-This Python module defines realistic molecules coupled with the MEEP FDTD engine.
+The major module defining molecule classes for coupling quantum molecular dynamics with Maxwell's equations using MEEP.
 
-The important issue is that we plan to propagate molecules under atomic units, while MEEP uses its own unit system.
+Coupling to other Maxwell's solvers should define other molecule classes in a similar manner.
 """
 
 from __future__ import annotations
@@ -24,17 +24,20 @@ except ImportError:
         "The meep package is required for this module. Please install it: https://meep.readthedocs.io/en/latest/Installation/."
     )
 
-# We define the following two global dictionaries to hold unique state across multiple molecule instances.
-# holds the instantaneous (per–time step) amplitude that Meep will sample
+# ----- Two global dictionaries to hold unique state across multiple molecule instances -----
+
+# 1. Instantaneous (per–time step) source amplitude for each unique polarization density
+# (which may be shared by multiple molecules, e.g., superradiance for a collection of closely spaced molecules)
 instantaneous_source_amplitudes = defaultdict(float)
-# one Meep Source per unique polarization fingerprint (shared by molecules)
+
+# 2. The fingerprint to define unique polarization density, which may be shared by many molecules.
 _fingerprint_source = {}
 
 
-# The issue is if this file is called many times within the same python interpreter session,
+# The issue is if this file is called many times within the same python interpreter session (such as pytest),
 # we need to ensure that the global state is reset between simulations.
 def reset_module_state():
-    """Clear shared state so a new Simulation starts from a clean slate."""
+    """Clear shared global state so a new Simulation starts from a clean slate."""
     instantaneous_source_amplitudes.clear()
     _fingerprint_source.clear()
 
@@ -53,7 +56,7 @@ def _register_sim_cleanup(sim):
 
 
 def make_custom_time_src(key):
-    # Meep calls this each time step; just return the current amplitude for this fingerprint
+    # Meep calls this each time step; just return the current amplitude for this polarization fingerprint
     return mp.CustomSource(lambda t: instantaneous_source_amplitudes[key])
 
 
@@ -66,9 +69,14 @@ class DummyMolecule:
         """
         Initialize the dummy molecule with default properties.
         This class is intended to be subclassed for specific molecular implementations.
+
+        + **`dt`** (float): Time step for the simulation used in MEEP.
+        + **`dx`** (float): Spatial resolution for the simulation used in MEEP.
+        + **`center`** (mp.Vector3): Center of the molecule in the simulation space.
+        + **`size`** (mp.Vector3): Size of the molecule in the simulation space.
         """
-        self.dt = dt  # time step for the simulation used in MEEP
-        self.dx = dx  # spatial resolution for the simulation used in MEEP
+        self.dt = dt
+        self.dx = dx
         self.center = center
         self.size = size
         # each molecule has a corresponding MEEP Source object and will be used in defining the MEEP simulation object
@@ -78,6 +86,8 @@ class DummyMolecule:
         """
         Propagate the quantum molecular dynamics given the light-matter coupling int_ep.
         This method should be overridden by subclasses to implement specific propagation logic.
+
+        + **`int_ep`**: The integral of the electric field coupled to polarization density over the molecule's volume.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 
@@ -99,6 +109,8 @@ class DummyMolecule:
         """
         Calculate the integral of the electric field over the molecule's volume.
         This method should be overridden by subclasses to implement specific integral calculation logic.
+
+        + **`sim`**: The MEEP simulation object.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 
@@ -108,7 +120,7 @@ class DummyMolecule:
             A step function which is used in meep simulation.run() to account for the
             interaction between this molecule and the Maxwell field at each time step.
 
-            - sources_non_molecule: A list of sources that are not part of this molecule.
+            + **`sources_non_molecule`**: A list of sources that are not part of this molecule.
             Typically any non-molecule sources such as Gaussian sources must be included here.
             """
             # 1. calculate the light-matter coupling: int_ep
@@ -123,21 +135,12 @@ class DummyMolecule:
 
         return __step_function__
 
-    def units_helper(self, time_units_in_fs=0.1):
+    def units_helper(self):
         """
-        Helper function to explain the unit system used in MEEP and its connection to atomic units.
+        Helper function to explain the unit system used in MEEP and its connection to atomic units,
+        which will be implemented in subclasses as needed.
         """
-        print(
-            "MEEP uses its own unit system, which is based on the speed of light in vacuum (c), ",
-            "the permittivity of free space (epsilon_0), and the permeability of free space (mu_0). ",
-            "To couple MEEP with molecular dynamics, we set [c] = [epsilon_0] = [mu_0] = [hbar] = 1. ",
-            "By further defining the time unit as %.2E fs, we can convert the MEEP unit (mu) to atomic units (au) as follows:"
-            % time_units_in_fs,
-            "- angular frequency [omega]: 1 mu = %.4E eV"
-            % (41.357 * 0.1 / time_units_in_fs),
-            "- length: 1 mu = %.3E nm" % (4.771 * time_units_in_fs / 0.1),
-            "- dipole moment: 1 mu = %.4E Debye" % (1.8970 * time_units_in_fs / 0.1),
-        )
+        pass
 
     def print_dynamics(self):
         """
@@ -170,42 +173,40 @@ class TLSMolecule(DummyMolecule):
         """
         Initialize the TLS molecule with an energy gap and dipole moment.
 
-        Parameters:
-        - resolution: The resolution of the MEEP simulation, which determines the time step and spatial resolution.
-        - center: The center of the molecule in the simulation space (default is mp.Vector3(0, 0, 0)).
-        - size: The size of the molecule in the simulation space (default is mp.Vector3(1, 1, 1)).
-        - frequency: The frequency of the molecule [omega = 2.0 * pi * frequency].
-        - dipole_moment: The transient dipole moment of the molecule.
-        - sigma: The width of the Gaussian profile for the TLS polarization density.
-        - orientation: The polarization orientation of the molecule (default is mp.Ex).
-        - dimensions: The dimensionality of the system (default is 3 for 3D, can be set to 2 for 2D).
-        - rescaling_factor: An optional rescaling factor for the dipole moment and polarization density.
+        + **`resolution`**: The resolution of the MEEP simulation, which determines the time step and spatial resolution.
+        + **`center`**: The center of the molecule in the simulation space (default is mp.Vector3(0, 0, 0)).
+        + **`size`**: The size of the molecule in the simulation space (default is mp.Vector3(1, 1, 1)).
+        + **`frequency`**: The frequency of the molecule (omega).
+        + **`dipole_moment`**: The transient dipole moment of the molecule.
+        + **`sigma`**: The width of the Gaussian profile for the TLS polarization density.
+        + **`orientation`**: The polarization orientation of the molecule (default is mp.Ex).
+        + **`dimensions`**: The dimensionality of the system (default is 3 for 3D, can be set to 2 for 2D).
+        + **`rescaling_factor`**: An optional rescaling factor for the dipole moment and polarization density.
         """
-        dt = 0.5 / resolution  # time step for the simulation
-        dx = 1.0 / resolution  # spatial resolution for the simulation
+        dt = 0.5 / resolution
+        dx = 1.0 / resolution
         super().__init__(dt=dt, dx=dx, center=center, size=size)
-        self.omega = (
-            frequency  # * 2.0 * np.pi  # convert frequency to angular frequency
-        )
+        self.omega = frequency
         self.dipole_moment = dipole_moment
         self.sigma = sigma
         self.orientation = orientation
         self.dimensions = dimensions
         self.rescaling_factor = rescaling_factor
-        self.t = 0.0  # current time
-        # for 2D simulations, the TLS orientation is fixed to mp.Ez
+        self.t = 0.0
+
+        # for 1D or 2D simulations, the TLS orientation is fixed to mp.Ez
         if self.dimensions == 2 and self.orientation != mp.Ez:
             warnings.warn(
                 "In 2D simulations, the TLS orientation is fixed to mp.Ez. Setting orientation to mp.Ez."
             )
             self.orientation = mp.Ez
-        if self.dimensions == 1:
+
+        if self.dimensions == 1 and self.orientation != mp.Ez:
             warnings.warn(
-                "1D simulations are not supported for TLSMolecule. Please use 2D or 3D simulations."
+                "In 1D simulations, the TLS orientation is fixed to mp.Ez. Setting orientation to mp.Ez."
             )
-            raise ValueError(
-                "1D simulations are not supported for TLSMolecule. Please use 2D or 3D simulations."
-            )
+            self.orientation = mp.Ez
+
         # the polarization prefactor in 3D
         self._polarization_prefactor_3d = (
             1.0
@@ -219,6 +220,14 @@ class TLSMolecule(DummyMolecule):
             1.0
             / (2.0 * np.pi) ** (1.0)
             / self.sigma**2
+            * self.dipole_moment
+            * self.rescaling_factor
+        )
+        # the polarization prefactor in 1D
+        self._polarization_prefactor_1d = (
+            1.0
+            / (2.0 * np.pi) ** (0.5)
+            / self.sigma
             * self.dipole_moment
             * self.rescaling_factor
         )
@@ -236,13 +245,10 @@ class TLSMolecule(DummyMolecule):
         self.polarization_fingerprint_hash = hash(
             json.dumps(self.polarization_fingerprint)
         )
-        print(
-            f"TLSMolecule: polarization fingerprint hash = {self.polarization_fingerprint_hash}"
-        )
+
+        # initialize the instantaneous source amplitude for this fingerprint
         if self.polarization_fingerprint_hash not in instantaneous_source_amplitudes:
-            instantaneous_source_amplitudes[self.polarization_fingerprint_hash] = (
-                0.0  # initialize the instantaneous source amplitude for this fingerprint
-            )
+            instantaneous_source_amplitudes[self.polarization_fingerprint_hash] = 0.0
 
         # set the Hamiltonian and density matrix for the TLS molecule
         self.Hs = np.array([[0, 0], [0, self.omega]], dtype=np.complex128)
@@ -251,6 +257,7 @@ class TLSMolecule(DummyMolecule):
         self.C = np.array([[1], [0]], dtype=np.complex128)
         self.rho = np.dot(self.C, self.C.conj().transpose())
         self.additional_data_history = []
+
         # initialize the sources for the TLS molecule
         self._init_sources()
 
@@ -258,8 +265,7 @@ class TLSMolecule(DummyMolecule):
         """
         Reset the TLS population to a specified excited state population.
 
-        Parameters:
-        - excited_population: The population of the excited state (default is 0.1).
+        + **`excited_population`**: The population of the excited state (default is 0.1).
         """
         if excited_population < 0 or excited_population > 1:
             raise ValueError("Excited population must be between 0 and 1.")
@@ -423,6 +429,11 @@ class TLSMolecule(DummyMolecule):
                 -(R.x * R.x + R.y * R.y) / 2.0 / self.sigma**2
             )
 
+        def amp_func_1d(R):
+            return self._polarization_prefactor_1d * np.exp(
+                -(R.x * R.x) / 2.0 / self.sigma**2
+            )
+
         key = self.polarization_fingerprint_hash
 
         # ensure an accumulator exists for this fingerprint
@@ -438,15 +449,19 @@ class TLSMolecule(DummyMolecule):
                 amplitude=1.0,
                 # amp_data=polarization_profile_2d if self.dimensions == 2 else polarization_profile_3d
                 amp_func=(
-                    amp_func_2d
-                    if self.dimensions == 2
+                    amp_func_1d
+                    if self.dimensions == 1
                     else (
-                        amp_func_3d_x
-                        if self.orientation == mp.Ex
+                        amp_func_2d
+                        if self.dimensions == 2
                         else (
-                            amp_func_3d_y
-                            if self.orientation == mp.Ey
-                            else amp_func_3d_z
+                            amp_func_3d_x
+                            if self.orientation == mp.Ex
+                            else (
+                                amp_func_3d_y
+                                if self.orientation == mp.Ey
+                                else amp_func_3d_z
+                            )
                         )
                     )
                 ),
@@ -457,21 +472,20 @@ class TLSMolecule(DummyMolecule):
     def _propagate(self, int_ep):
         """
         TLS: Propagate the quantum molecular dynamics given the light-matter coupling int_ep.
+
+        + **`int_ep`**: The integral of the electric field coupled to polarization density over the molecule's volume.
         """
-        # update the density matrix for one time step
-        # the 2*pi factor in front of int_ep is to convert the energy to MEEP units,
-        # note that the omega in expHs has already included the 2*pi factor
         U = np.dot(
             self.expHs, np.dot(expm((1j * self.dt * int_ep) * self.SIGMAX), self.expHs)
         )
         self.rho = np.dot(np.dot(U, self.rho), U.conj().transpose())
-        self.t += self.dt  # update current time in a.u.
+        self.t += self.dt
         self.additional_data_history.append(self.append_additional_data())
 
     def append_additional_data(self):
         """
-        Append additional data to be sent back to MEEP, which can be retrieved by the user
-        via the Python interface of MEEP: mp.TLSMolecule.additional_data_history.
+        Append additional data to be sent back to MaxwellLink, which can be retrieved by the user
+        via: maxwelllink.TLSMolecule.additional_data_history.
 
         Returns:
         - A dictionary containing additional data.
@@ -496,7 +510,18 @@ class TLSMolecule(DummyMolecule):
         TLS: Calculate the integral of the electric field over the molecule's volume.
         """
         int_ep = 0.0
-        if self.dimensions == 2:
+        if self.dimensions == 1:
+            int_ep = sim.integrate_field_function(
+                [mp.Ez],
+                lambda R, ez: self._polarization_prefactor_1d
+                * exp(
+                    -((R.x - self.center.x) * (R.x - self.center.x))
+                    / (2.0 * self.sigma**2)
+                )
+                * (ez),
+                mp.Volume(size=self.size, center=self.center),
+            )
+        elif self.dimensions == 2:
             int_ep = sim.integrate_field_function(
                 [mp.Ez],
                 lambda R, ez: self._polarization_prefactor_2d
@@ -565,24 +590,36 @@ class TLSMolecule(DummyMolecule):
         return int_ep
 
     def print_dynamics(self):
+        """
+        Print the TLS molecular dynamics properties.
+        """
         for idx, rho in enumerate(self.rho_history):
             print(f"Time step {idx}: Excited-state population = {np.real(rho[1,1])}")
 
 
 def update_molecules_no_socket(sources_non_molecule=None, molecules=None):
+    """
+    A step function which is used in meep simulation.run() to account for the
+    interaction between a collection of molecules and the Maxwell field at each time step.
+    Here, we assume the molecules do not use socket communication.
+
+    + **`sources_non_molecule`**: A list of sources that are not part of any molecule.
+      Typically any non-molecule sources such as Gaussian sources must be included here.
+    + **`molecules`**: A list of molecule instances (e.g., TLSMolecule) to be propagated.
+    """
     if sources_non_molecule is None:
         sources_non_molecule = []
     if molecules is None:
         molecules = []
 
-    started = {"flag": False}  # install sources once
+    started = {"flag": False}
 
     def __step_function__(sim):
-        # 0) First call: install the union of unique fingerprint Sources + non-molecule sources
+        # 0. First call: install the union of unique fingerprint Sources + non-molecule sources
         if not started["flag"]:
             # ensure every molecule has created/registered its fingerprint Source
             for m in molecules:
-                if not m.sources:  # safety
+                if not m.sources:
                     m._init_sources()
             unique_sources = list(
                 {id(src): src for m in molecules for src in m.sources}.values()
@@ -592,13 +629,13 @@ def update_molecules_no_socket(sources_non_molecule=None, molecules=None):
             _register_sim_cleanup(sim)
             started["flag"] = True
 
-        # 1) (optional) precompute field integrals by fingerprint
+        # 1. (optional) precompute field integrals by fingerprint
         regularized_efield_integrals = {}
 
-        # 2) ZERO the per-fingerprint accumulator for THIS STEP
+        # 2. ZERO the per-fingerprint accumulator for THIS STEP
         touched_keys = set()
 
-        # 3) Propagate each molecule and ACCUMULATE its amplitude into the fingerprint bin
+        # 3. Propagate each molecule and accumulate its amplitude into the fingerprint bin
         for m in molecules:
             key = m.polarization_fingerprint_hash
             if key not in regularized_efield_integrals:
@@ -617,10 +654,12 @@ def update_molecules_no_socket(sources_non_molecule=None, molecules=None):
 
             instantaneous_source_amplitudes[key] += amp
 
-        # 4) DO NOT call sim.change_sources() here — CustomSource reads the updated accumulators automatically
+        # 4. We do not call sim.change_sources() here: CustomSource reads the updated accumulators automatically
 
     return __step_function__
 
+
+# ----------- SocketMolecule class for coupling to a local driver code via socket communication -----------
 
 fs_to_au = 41.341373335  # 1 fs = 41.341373335 a.u. from wikipedia::atomic_units
 
@@ -632,6 +671,9 @@ def meep_to_atomic_units_E(
     Conversion helper for the E-field integral from MEEP units to atomic units.
     MEEP uses the units system of epsion_0 = mu_0 = c = 1. Assuming SocketMolecule also uses the units of hbar=1,
     given \tau (time units) = time_units_fs, the conversion factor from MEEP units to atomic units can be constructed.
+
+    + **`Emu_vec3`**: The electric field integral in MEEP units as a numpy array of shape (3,).
+    + **`time_units_fs`**: The time units in femtoseconds (default is 0.1 fs).
     """
     factor = 1.2929541569381223e-6 / (time_units_fs**2)
     return np.asarray(Emu_vec3, dtype=float) * factor
@@ -644,6 +686,9 @@ def atomic_to_meep_units_SourceAmp(
     Conversion helper for the source amplitude from atomic units to MEEP units.
 
     source amplitude unit = dipole moment / time
+
+    + **`amp_au_vec3`**: The source amplitude in atomic units as a numpy array of shape (3,).
+    + **`time_units_fs`**: The time units in femtoseconds (default is 0.1 fs).
     """
     factor = 0.002209799779149953
     return np.asarray(amp_au_vec3, dtype=float) * factor
@@ -651,8 +696,7 @@ def atomic_to_meep_units_SourceAmp(
 
 class SocketMolecule(DummyMolecule):
     """
-    A ScoketMolecule class uses the socket interface resembling to the i-pi socket interface to
-    use a local driver code to propagate the quantum molecular dynamics.
+    A SocketMolecule class uses the socket interface to use a local driver code to propagate the quantum molecular dynamics.
 
     MEEP transfers [int_x, int_y, and int_z], where int_i = int dr E_i(r) * P_j(r) over the molecule volume, to the driver code.
     Here P_i(r) is the normalized spatial distribution of the molecular polarization density along the i-th direction (i = x, y, z),
@@ -698,9 +742,6 @@ class SocketMolecule(DummyMolecule):
         self.dimensions = dimensions
         self.sigma = sigma
         self.rescaling_factor = rescaling_factor
-        # print(
-        #    f"SocketMolecule: using a rescaling factor of {self.rescaling_factor} for the dipole moment and polarization density."
-        # )
 
         # MEEP by default uses the units system of epsion_0 = mu_0 = c = 1.
         # SocketMolecule communicates with the driver code using atomic units.
@@ -708,10 +749,10 @@ class SocketMolecule(DummyMolecule):
         # The time step in MEEP is self.dt in MEEP units, which is self.dt * time_units_fs in fs.
         # So SocketMolecule will tell the driver code to use a time step of self.dt * time_units_fs * fs_to_au atomic units.
         self.time_units_fs = time_units_fs
-        self.dt_au = self.dt * time_units_fs * fs_to_au  # time step in atomic units
+        self.dt_au = self.dt * time_units_fs * fs_to_au
 
-        if dimensions not in [2, 3]:
-            raise ValueError("SocketMolecule only supports 2D and 3D simulations.")
+        if dimensions not in [1, 2, 3]:
+            raise ValueError("SocketMolecule only supports 1D, 2D and 3D simulations.")
         if hub is None:
             raise ValueError("SocketHub must be provided for SocketMolecule.")
         if molecule_id is None:
@@ -724,6 +765,10 @@ class SocketMolecule(DummyMolecule):
         # the polarization prefactor in 2D excluding the transient dipole moment
         self._polarization_prefactor_2d = (
             1.0 / (2.0 * np.pi) ** (1.0) / self.sigma**2 * self.rescaling_factor
+        )
+        # the polarization prefactor in 1D excluding the transient dipole moment
+        self._polarization_prefactor_1d = (
+            1.0 / (2.0 * np.pi) ** (0.5) / self.sigma * self.rescaling_factor
         )
 
         # the regularized E-field integral depends on the "fingerprint" of molecular polarization density distribution
@@ -739,9 +784,6 @@ class SocketMolecule(DummyMolecule):
         self.polarization_fingerprint_hash = hash(
             json.dumps(self.polarization_fingerprint)
         )
-        # print(
-        #    f"SocketMolecule: polarization fingerprint hash = {self.polarization_fingerprint_hash}"
-        # )
 
         self._init_sources()
 
@@ -755,6 +797,7 @@ class SocketMolecule(DummyMolecule):
         # register this molecule with the hub so it knows to expect a client
         if mp.am_master():
             self.hub.register_molecule(self.molecule_id)
+            # only the master process prints the units information
             if self.molecule_id == 0:
                 self.units_helper()
 
@@ -764,7 +807,7 @@ class SocketMolecule(DummyMolecule):
     def _init_sources(self):
         """
         Initialize the sources for the molecule. For general purposes, each molecule contains
-        three polarization directions (Ex, Ey, Ez) in 3D or one (Ez) in 2D.
+        three polarization directions (Ex, Ey, Ez) in 3D or one (Ez) in 2D and 1D.
         """
 
         # Define the spatial shape of the polarization density
@@ -794,9 +837,27 @@ class SocketMolecule(DummyMolecule):
                 -(R.x**2 + R.y**2) / (2.0 * self.sigma**2)
             )
 
+        def amp_func_1d(R):
+            return self._polarization_prefactor_1d * np.exp(
+                -(R.x**2) / (2.0 * self.sigma**2)
+            )
+
         # Build/reuse one Source per (fingerprint, component)
         srcs = []
-        if self.dimensions == 2:
+        if self.dimensions == 1:
+            key = (self.polarization_fingerprint_hash, "Ez")
+            if key not in _fingerprint_source:
+                instantaneous_source_amplitudes[key] = 0.0  # ensure accumulator exists
+                _fingerprint_source[key] = mp.Source(
+                    src=make_custom_time_src(key),  # <- reads accumulator each step
+                    component=mp.Ez,
+                    center=self.center,
+                    size=self.size,
+                    amplitude=1.0,  # fixed scalar; time dependence via CustomSource
+                    amp_func=amp_func_1d,
+                )
+            srcs.append(_fingerprint_source[key])
+        elif self.dimensions == 2:
             key = (self.polarization_fingerprint_hash, "Ez")
             if key not in _fingerprint_source:
                 instantaneous_source_amplitudes[key] = 0.0  # ensure accumulator exists
@@ -835,11 +896,24 @@ class SocketMolecule(DummyMolecule):
 
     def _calculate_ep_integral(self, sim):
         """
-        Calculate the integral of the electric field over the molecule's volume and return a vector (int_x, int_y, int_z).
+        Calculate the integral of the electric field coupled to the polarization density over the molecule's volume and return a vector (int_x, int_y, int_z).
+
+        + **`sim`**: The MEEP simulation instance.
         """
         vol = mp.Volume(size=self.size, center=self.center)
         int_ep_x, int_ep_y, int_ep_z = 0.0, 0.0, 0.0
-        if self.dimensions == 2:
+        if self.dimensions == 1:
+            int_ep_z = sim.integrate_field_function(
+                [mp.Ez],
+                lambda R, ez: self._polarization_prefactor_1d
+                * exp(
+                    -((R.x - self.center.x) * (R.x - self.center.x))
+                    / (2.0 * self.sigma**2)
+                )
+                * (ez),
+                vol,
+            )
+        elif self.dimensions == 2:
             int_ep_z = sim.integrate_field_function(
                 [mp.Ez],
                 lambda R, ez: self._polarization_prefactor_2d
@@ -906,13 +980,17 @@ class SocketMolecule(DummyMolecule):
         return [np.real(int_ep_x), np.real(int_ep_y), np.real(int_ep_z)]
 
     def _update_source_amplitude(self, amp_vec3: np.ndarray):
-        """Set amplitudes per component from driver-returned vector (atomic units)."""
+        """
+        Set amplitudes per component from driver-returned vector (atomic units).
+
+        + **`amp_vec3`**: A numpy array of shape (3,) containing the source amplitudes in atomic units.
+        """
         amp_mu = atomic_to_meep_units_SourceAmp(amp_vec3, self.time_units_fs)
         return np.asarray(amp_mu, dtype=float)
 
     def units_helper(self):
         """
-        TBD: Helper function to explain the unit system used in MEEP and its connection to atomic units.
+        Helper function to explain the unit system used in MEEP and its connection to atomic units.
         This units helper will reduce the confusion when using MEEP with molecular dynamics.
         """
         # calculate units conversion factors
@@ -955,6 +1033,14 @@ class SocketMolecule(DummyMolecule):
 def update_molecules_no_mpi(
     hub: SocketHub, molecules: List[SocketMolecule], sources_non_molecule: List = None
 ):
+    """
+    Update the state of multiple socket molecules without using MPI.
+
+    + **`hub` [ SocketHub ]** — Specifies the socket hub for communication.
+    + **`molecules` [ List[SocketMolecule] ]** — Specifies a list of SocketMolecule instances to be updated.
+    + **`sources_non_molecule` [ List ]** — Specifies a list of sources that are not part of any molecule.
+      Typically any non-molecule sources such as Gaussian sources must be included here.
+    """
     if sources_non_molecule is None:
         sources_non_molecule = []
 
@@ -1044,7 +1130,7 @@ def update_molecules_no_mpi(
             )  # returns [ax, ay, az] (or only z in 2D)
 
             # Map returned vector into component keys
-            if mol.dimensions == 2:
+            if mol.dimensions == 1 or mol.dimensions == 2:
                 key = (mol.polarization_fingerprint_hash, "Ez")
                 if key not in touched_keys:
                     instantaneous_source_amplitudes[key] = 0.0
@@ -1082,8 +1168,12 @@ def update_molecules(
     hub: SocketHub, molecules: List[SocketMolecule], sources_non_molecule: List = None
 ):
     """
-    MPI-safe step function that installs sources once and then only streams
-    amplitudes through CustomSource-backed accumulators. No per-step change_sources().
+    MPI-safe function to update the state of multiple socket molecules.
+
+    + **`hub` [ SocketHub ]** — Specifies the socket hub for communication.
+    + **`molecules` [ List[SocketMolecule] ]** — Specifies a list of SocketMolecule instances to be updated.
+    + **`sources_non_molecule` [ List ]** — Specifies a list of sources that are not part of any molecule.
+      Typically any non-molecule sources such as Gaussian sources must be included here.
     """
     import numpy as _np
     import json as _json
@@ -1263,7 +1353,7 @@ def update_molecules(
             )  # returns np.array([ax, ay, az])
 
             # Sum into shared accumulators by (fingerprint, component)
-            if mol.dimensions == 2:
+            if mol.dimensions == 1 or mol.dimensions == 2:
                 key = (mol.polarization_fingerprint_hash, "Ez")
                 if key not in touched_keys:
                     instantaneous_source_amplitudes[key] = 0.0

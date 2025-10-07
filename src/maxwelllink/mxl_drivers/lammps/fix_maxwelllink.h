@@ -28,7 +28,7 @@ class FixMaxwellLink : public Fix {
   char *host;
   int port;
   int inet;        // 1=INET (TCP), 0=UNIX
-  int master;      // rank 0?
+  int master;      // rank 0
   int sockfd;      // socket fd
   int initialized; // after INIT handshake
   int have_field;  // E-field received this step
