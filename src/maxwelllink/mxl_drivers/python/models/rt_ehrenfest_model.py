@@ -68,6 +68,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         friction_gamma_au: float = 0.0,
         temperature_K: float = None,
         rng_seed: int = 1234,
+        homo_to_lumo: bool = False
     ):
         """
         Initialize the necessary parameters for the RT-TDDFT quantum dynamics model.
@@ -124,6 +125,8 @@ class RTEhrenfestModel(RTTDDFTModel):
         self.friction_gamma_au = friction_gamma_au
         self.temperature_K = temperature_K
         self.rng_seed = int(rng_seed)
+
+        self.homo_to_lumo = homo_to_lumo
 
     def initialize(self, dt_new, molecule_id):
         super().initialize(dt_new, molecule_id)
@@ -201,6 +204,10 @@ class RTEhrenfestModel(RTTDDFTModel):
         # --- initial state ---
         self.Rk = self._molecule_positions_bohr()
         self.Vk = np.zeros_like(self.Rk)
+
+        if self.homo_to_lumo:
+            self._prepare_alpha_homo_to_lumo_excited_state()
+            
         self.Fk = self.compute_forces(efield_vec=None)
 
         self._step_in_cycle = 0
@@ -1207,9 +1214,10 @@ if __name__ == "__main__":
         remove_permanent_dipole=False,
         n_fock_per_nuc=2,
         n_elec_per_fock=5,
+        homo_to_lumo=True
     )
     model.initialize(dt_new=0.2, molecule_id=0)
-    model._prepare_alpha_homo_to_lumo_excited_state()
+    # model._prepare_alpha_homo_to_lumo_excited_state()
     # model._propagate_rttddft_ehrenfest(n_nuc_steps=2, efield_vec=np.array([0.0, 0.0, 1e-2]), force_type="ehrenfest")
     for i in range(20):
         model.propagate(effective_efield_vec=np.array([0.0, 0.0, 1e-2]))
