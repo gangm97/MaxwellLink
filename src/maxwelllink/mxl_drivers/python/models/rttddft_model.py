@@ -61,7 +61,8 @@ class RTTDDFTModel(DummyModel):
         dft_grid_name: str = "SG0",
         dft_radial_points: int = -1,
         dft_spherical_points: int = -1,
-        electron_propagation: str = "pc",
+        electron_propagation: str = "etrs",
+        threshold_pc: float = 1e-6,
     ):
         """
         Initialize the necessary parameters for the RT-TDDFT quantum dynamics model.
@@ -70,24 +71,20 @@ class RTTDDFTModel(DummyModel):
         + **`molecule_xyz`** (str): Path to the XYZ file containing the molecular structure. The second line of the XYZ file may contain the charge and multiplicity.
         + **`functional`** (str): Any Psi4 functional label, e.g. "PBE", "B3LYP", "SCAN", "PBE0". Default is "SCF" (Hartree-Fock).
         + **`basis`** (str): Any basis set label recognized by Psi4, e.g. "sto-3g", "6-31g", "cc-pVDZ". Default is "sto-3g".
-        + **`dt_rttddft_au`** (float): Time step for real-time TDDFT propagation in atomic units (a.u.). Default is 0.04 a.u.
-        If the FDTD time step is an integer multiple of this, the driver will sub-step internally. This sub-stepping can avoid propagating EM fields
-        too frequently when the molecule requires a small time step.
-        + **`delta_kick_au`** (float): Strength of the initial delta-kick perturbation along the x, y, and z direction in atomic units (a.u.).
-        Default is 0.0e-3 a.u. If this value is set to a non-zero value, the driver will apply a delta-kick perturbation at t=0 to initiate the dynamics.
-        With this delta-kick, and also setting the FDTD coupling to zero, one can compute the conventional RT-TDDFT linear absorption spectrum of the molecule.
+        + **`dt_rttddft_au`** (float): Time step for real-time TDDFT propagation in atomic units (a.u.). Default is 0.04 a.u. If the FDTD time step is an integer multiple of this, the driver will sub-step internally. This sub-stepping can avoid propagating EM fields too frequently when the molecule requires a small time step.
+        + **`delta_kick_au`** (float): Strength of the initial delta-kick perturbation along the x, y, and z direction in atomic units (a.u.). Default is 0.0e-3 a.u. If this value is set to a non-zero value, the driver will apply a delta-kick perturbation at t=0 to initiate the dynamics. With this delta-kick, and also setting the FDTD coupling to zero, one can compute the conventional RT-TDDFT linear absorption spectrum of the molecule.
         + **`delta_kick_direction`** (str): Direction of the initial delta-kick perturbation. Can be "x", "y", "z", "xy", "xz", "yz", or "xyz". Default is "xyz".
         + **`memory`** (str): Memory allocation for Psi4, e.g. "8GB", "500MB". Default is "8GB".
         + **`num_threads`** (int): Number of CPU threads to use in Psi4. Default is 1.
         + **`checkpoint`** (bool): Whether to dump checkpoint files during propagation to allow restarting from the last checkpoint. Default is False.
-        + **`restart`** (bool): Whether to restart the propagation from the last checkpoint. Default is False. Setting this to True requires that checkpoint files exist.
-        When restarting, the driver will ignore the initial delta-kick perturbation even if it is set to a non-zero value.
+        + **`restart`** (bool): Whether to restart the propagation from the last checkpoint. Default is False. Setting this to True requires that checkpoint files exist. When restarting, the driver will ignore the initial delta-kick perturbation even if it is set to a non-zero value.
         + **`verbose`** (bool): Whether to print verbose output. Default is False.
         + **`remove_permanent_dipole`** (bool): Whether to remove the effect of permanent dipole moments in the light-matter coupling term. Default is False.
-        + **`dft_grid_name`** (str): Name of the DFT grid to use in Psi4, e.g. "SG0", "SG1". Default is "" (Psi4 default). Using "SG0" can speed up DFT calculations significantly.
+        + **`dft_grid_name`** (str): Name of the DFT grid to use in Psi4, e.g. "SG0", "SG1". Default is "SG1". Using "SG0" can speed up DFT calculations significantly but is less accurate.
         + **`dft_radial_points`** (int): Number of radial points in the DFT grid. Default is -1 (Psi4 default).
         + **`dft_spherical_points`** (int): Number of spherical points in the DFT grid. Default is -1 (Psi4 default).
         + **`electron_propagation`** (str): The electron propagation scheme to use. Options are "etrs" (Enforced Time-Reversal Symmetry) or "pc" (Predictor-Corrector). Default is "pc".
+        + **`threshold_pc`** (float): Convergence threshold for the predictor-corrector scheme. Default is 1e-8.
         """
         super().__init__(verbose, checkpoint, restart)
 
@@ -153,6 +150,7 @@ class RTTDDFTModel(DummyModel):
             raise ValueError(
                 "Invalid electron_propagation. Must be one of 'etrs' (Enforced Time-Reversal Symmetry) or 'pc' (Predictor-Corrector)."
             )
+        self.threshold_pc = float(threshold_pc)
 
     # -------------- heavy-load initialization (at INIT) --------------
 
@@ -333,7 +331,9 @@ class RTTDDFTModel(DummyModel):
                 # prevents recomputing basis collocation on grid in compute_V()
                 self.Vpot.build_collocation_cache(self.Vpot.nblocks())
             except Exception:
-                pass
+                raise RuntimeError(
+                    "[ERROR] Failed to initialize Psi4 DFT V_potential grid."
+                )
 
     def _build_KS_psi4(self, Da_np, Db_np, restricted, V_ext=None):
         """
@@ -500,10 +500,10 @@ class RTTDDFTModel(DummyModel):
         self.step_started = True
         self.step_completed = False
 
-        if self.verbose:
-            print(
-                f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving e-field vector: [{effective_efield_vec[0]:.4E}, {effective_efield_vec[1]:.4E}, {effective_efield_vec[2]:.4E}]"
-            )
+        # if self.verbose:
+        #    print(
+        #        f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving e-field vector: [{effective_efield_vec[0]:.4E}, {effective_efield_vec[1]:.4E}, {effective_efield_vec[2]:.4E}]"
+        #    )
 
         if self.engine == "psi4":
             # calculate the effective dipole matrix due to the coupling with the external E-field; minus sign for e = -1
@@ -600,7 +600,7 @@ class RTTDDFTModel(DummyModel):
                 self.times.append(self.t)
                 if self.verbose:
                     print(
-                        f"Step {self.count:4d} Time {self.dt_rttddft_au*self.count:.6f}  Etot = {Etot:.10f} Eh  ΔE = {Etot-self.E0:.10f} Eh,  μx = {dip_vec[0]:.6f} a.u.,  μy = {dip_vec[1]:.6f} a.u.,  μz = {dip_vec[2]:.6f} a.u."
+                        f"Step {self.count:4d} Time {self.dt_rttddft_au*self.count:.6f}  Etot = {Etot:.10f} Eh  ΔE = {Etot-self.E0:.10f} Eh, EnucKin = {self.kinEnuc:.10f} Eh,  μx = {dip_vec[0]:.6f} a.u.,  μy = {dip_vec[1]:.6f} a.u.,  μz = {dip_vec[2]:.6f} a.u."
                     )
 
                 self.count += 1
@@ -616,10 +616,10 @@ class RTTDDFTModel(DummyModel):
         self.step_started = True
         self.step_completed = False
 
-        if self.verbose:
-            print(
-                f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving e-field vector: [{effective_efield_vec[0]:.4E}, {effective_efield_vec[1]:.4E}, {effective_efield_vec[2]:.4E}]"
-            )
+        # if self.verbose:
+        #    print(
+        #       f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving e-field vector: [{effective_efield_vec[0]:.4E}, {effective_efield_vec[1]:.4E}, {effective_efield_vec[2]:.4E}]"
+        #    )
 
         if self.engine == "psi4":
             # calculate the effective dipole matrix due to the coupling with the external E-field; minus sign for e = -1
@@ -683,7 +683,7 @@ class RTTDDFTModel(DummyModel):
                                 print(
                                     f"[molecule {self.molecule_id}]  Predictor-Corrector iteration {counter}, max|ΔF| = {np.max(np.abs(FaO_diff)):.8E}"
                                 )
-                            if np.linalg.norm(FaO_diff) < 1e-6:
+                            if np.linalg.norm(FaO_diff) < self.threshold_pc:
                                 break
                         FaO_test = FaO_future.copy()
                         counter += 1
@@ -733,8 +733,8 @@ class RTTDDFTModel(DummyModel):
                                     f"[molecule {self.molecule_id}]  Predictor-Corrector iteration {counter}, max|ΔF| = {np.max(np.abs(FaO_diff)):.8E}"
                                 )
                             if (
-                                np.linalg.norm(FaO_diff) < 1e-6
-                                and np.linalg.norm(FbO_diff) < 1e-6
+                                np.linalg.norm(FaO_diff) < self.threshold_pc
+                                and np.linalg.norm(FbO_diff) < self.threshold_pc
                             ):
                                 break
                         FaO_test = FaO_future.copy()
@@ -758,7 +758,7 @@ class RTTDDFTModel(DummyModel):
                 self.times.append(self.t)
                 if self.verbose:
                     print(
-                        f"Step {self.count:4d} Time {self.dt_rttddft_au*self.count:.6f}  Etot = {Etot:.10f} Eh  ΔE = {Etot-self.E0:.10f} Eh,  μx = {dip_vec[0]:.6f} a.u.,  μy = {dip_vec[1]:.6f} a.u.,  μz = {dip_vec[2]:.6f} a.u."
+                        f"Step {self.count:4d} Time {self.dt_rttddft_au*self.count:.6f}  Etot = {Etot:.10f} Eh  ΔE = {Etot-self.E0:.10f} Eh, EnucKin = {self.kinEnuc:.10f} Eh,  μx = {dip_vec[0]:.6f} a.u.,  μy = {dip_vec[1]:.6f} a.u.,  μz = {dip_vec[2]:.6f} a.u."
                     )
 
                 self.count += 1

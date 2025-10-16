@@ -63,6 +63,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         dft_radial_points: int = -1,
         dft_spherical_points: int = -1,
         electron_propagation: str = "etrs",
+        threshold_pc: float = 1e-6,
         # ---- control of Ehrenfest dynamics ----
         force_type: str = "ehrenfest",
         n_fock_per_nuc: int = 10,
@@ -82,23 +83,20 @@ class RTEhrenfestModel(RTTDDFTModel):
         + **`molecule_xyz`** (str): Path to the XYZ file containing the molecular structure. The second line of the XYZ file may contain the charge and multiplicity.
         + **`functional`** (str): Any Psi4 functional label, e.g. "PBE", "B3LYP", "SCAN", "PBE0". Default is "SCF" (Hartree-Fock).
         + **`basis`** (str): Any basis set label recognized by Psi4, e.g. "sto-3g", "6-31g", "cc-pVDZ". Default is "sto-3g".
-        + **`dt_rttddft_au`** (float): Time step for real-time TDDFT propagation in atomic units (a.u.). Default is 0.04 a.u.
-        If the MEEP time step is an integer multiple of this, the driver will sub-step internally. This sub-stepping can avoid propagating EM fields
-        too frequently when the molecule requires a small time step.
-        + **`delta_kick_au`** (float): Strength of the initial delta-kick perturbation along the x, y, and z direction in atomic units (a.u.).
-        Default is 0.0e-3 a.u. If this value is set to a non-zero value, the driver will apply a delta-kick perturbation at t=0 to initiate the dynamics.
-        With this delta-kick, and also setting the MEEP coupling to zero, one can compute the conventional RT-TDDFT linear absorption spectrum of the molecule.
+        + **`dt_rttddft_au`** (float): Time step for real-time TDDFT propagation in atomic units (a.u.). Default is 0.04 a.u. If the MEEP time step is an integer multiple of this, the driver will sub-step internally. This sub-stepping can avoid propagating EM fields too frequently when the molecule requires a small time step.
+        + **`delta_kick_au`** (float): Strength of the initial delta-kick perturbation along the x, y, and z direction in atomic units (a.u.). Default is 0.0e-3 a.u. If this value is set to a non-zero value, the driver will apply a delta-kick perturbation at t=0 to initiate the dynamics. With this delta-kick, and also setting the MEEP coupling to zero, one can compute the conventional RT-TDDFT linear absorption spectrum of the molecule.
         + **`delta_kick_direction`** (str): Direction of the initial delta-kick perturbation. Can be "x", "y", "z", "xy", "xz", "yz", or "xyz". Default is "xyz".
         + **`memory`** (str): Memory allocation for Psi4, e.g. "8GB", "500MB". Default is "8GB".
         + **`num_threads`** (int): Number of CPU threads to use in Psi4. Default is 1.
         + **`checkpoint`** (bool): Whether to dump checkpoint files during propagation to allow restarting from the last checkpoint. Default is False.
-        + **`restart`** (bool): Whether to restart the propagation from the last checkpoint. Default is False. Setting this to True requires that checkpoint files exist.
-        When restarting, the driver will ignore the initial delta-kick perturbation even if it is set to a non-zero value.
+        + **`restart`** (bool): Whether to restart the propagation from the last checkpoint. Default is False. Setting this to True requires that checkpoint files exist. When restarting, the driver will ignore the initial delta-kick perturbation even if it is set to a non-zero value.
         + **`verbose`** (bool): Whether to print verbose output. Default is False.
         + **`remove_permanent_dipole`** (bool): Whether to remove the effect of permanent dipole moments in the light-matter coupling term. Default is False.
-        + **`dft_grid_name`** (str): Name of the DFT grid to use in Psi4, e.g. "SG0", "SG1", "SG2", "SG3". Default is "" (Psi4 default). Using "SG0" can speed up calculations.
+        + **`dft_grid_name`** (str): Name of the DFT grid to use in Psi4, e.g. "SG0", "SG1". Default is "SG1". Using "SG0" can speed up calculations but is less accurate.
         + **`dft_radial_points`** (int): Number of radial points in the DFT grid. Default is -1 (Psi4 default).
         + **`dft_spherical_points`** (int): Number of spherical points in the DFT grid. Default is -1 (Psi4 default).
+        + **`electron_propagation`** (str): Method for electron propagation. Can be "pc" for predictor-corrector or "etrs" for enforced time-reversal symmetry. Default is "pc".
+        + **`threshold_pc`** (float): Convergence threshold for the predictor-corrector scheme. Default is 1e-8. Must be used with `electron_propagation="pc"`.
         + **`force_type`** (str): Type of forces to compute for the nuclei. Can be "bo" for Born-Oppenheimer forces or "ehrenfest" for Ehrenfest forces. Default is "ehrenfest".
         + **`n_fock_per_nuc`** (int): Number of Fock builds (electronic updates) per nuclear update. Default is 10.
         + **`n_elec_per_fock`** (int): Number of RT-TDDFT steps per Fock build (electronic update). Default is 10.
@@ -110,6 +108,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         + **`partial_charges`** (array-like): Array of partial charges for each atom in the molecule, required for BOMD simulations. Default is None.
         + **`fix_nuclei_indices`** (list): List of indices of nuclei to fix during propagation. Default is None (no nuclei fixed).
         """
+
         super().__init__(
             engine=engine,
             molecule_xyz=molecule_xyz,
@@ -128,6 +127,7 @@ class RTEhrenfestModel(RTTDDFTModel):
             dft_radial_points=dft_radial_points,
             dft_spherical_points=dft_spherical_points,
             electron_propagation=electron_propagation,
+            threshold_pc=threshold_pc,
         )
 
         # --- Ehrenfest-specific parameters ---
@@ -392,50 +392,6 @@ class RTEhrenfestModel(RTTDDFTModel):
         if self.verbose:
             print(f"Geometry change and Psi4 refresh time: {elapsed_time:.6f} seconds")
 
-    def _rebuild_vpot_fast(self):
-        """
-        Build a fresh V_potential (VBase) tied to the current geometry and basis,
-        without running SCF. Also refresh self.alpha_hfx for hybrids.
-        """
-        basis = self.wfn.basisset()
-        # 1. Get or build the SuperFunctional that matches self.functional
-        sf = None
-        try:
-            # If the current wfn has a functional, reuse its definition (safer for custom options)
-            sf = self.wfn.functional()
-
-        except Exception:
-            # Fall back to building from the functional string
-            try:
-                # Newer Psi4:
-                from psi4.driver.dft import build_superfunctional
-
-                sf = build_superfunctional(self.functional, True)
-
-            except Exception:
-                # Older Psi4 fallback:
-                sf = psi4.core.SuperFunctional.build_from_string(self.functional, True)
-
-        # We need potential (and often gradient) values; request up to first derivative
-        try:
-            sf.set_max_deriv(1)
-        except Exception:
-            pass
-        try:
-            sf.initialize()
-        except Exception:
-            pass
-
-        # 2. Build a new VBase tied to current basis & functional
-        # Tag: "RV" for RKS, "UV" for UKS (Psi4 convention)
-        ks_tag = "RV" if self.is_restricted else "UV"
-        self.Vpot = psi4.core.VBase.build(basis, sf, ks_tag)
-        self.Vpot.initialize()
-        try:
-            self.Vpot.build_collocation_cache(self.Vpot.nblocks())
-        except Exception:
-            pass
-
     def _refresh_psi4_internals_after_geom_change(self):
         """
         Cheap, SCF-free refresh after a geometry change.
@@ -488,34 +444,14 @@ class RTEhrenfestModel(RTTDDFTModel):
 
         # Fresh XC quadrature/grid without SCF (critical for B3LYP)
         if self.alpha_hfx < 1.0:
+            self.Vpot = self.wfn.V_potential()
             try:
-                self._rebuild_vpot_fast()
-            except Exception as e:
-                if self.verbose:
-                    print(
-                        f"[warning] V_potential fast rebuild failed: {e!r}. Falling back to a micro-SCF reinit."
-                    )
-                # --- Safe fallback: a very cheap one-iteration SCF just to re-seed the Wavefunction ---
-                #   This creates a brand-new Wavefunction and V_potential consistent with the new geometry.
-                self.opts["e_convergence"] = 1e-1
-                self.opts["d_convergence"] = 1e-1
-                self.opts["maxiter"] = 3
-                psi4.set_options(self.opts)
-                _Eref, wfn = psi4.energy(
-                    f"{self.functional}", molecule=self.mol, return_wfn=True
+                self.Vpot.initialize()
+                self.Vpot.build_collocation_cache(self.Vpot.nblocks())
+            except Exception:
+                print(
+                    "[Warning] Failed to initialize Psi4 DFT V_potential grid, previous V_potential will be used."
                 )
-                self.wfn = wfn
-                self.Vpot = self.wfn.V_potential()
-                try:
-                    self.Vpot.initialize()
-                    self.Vpot.build_collocation_cache(self.Vpot.nblocks())
-                except Exception:
-                    pass
-                try:
-                    self.alpha_hfx = self.wfn.functional().x_alpha()
-                except Exception:
-                    if not hasattr(self, "alpha_hfx"):
-                        self.alpha_hfx = 0.0
 
         # Update nuclear repulsion (reporting / forces)
         self.Enuc = self.mol.nuclear_repulsion_energy()
@@ -732,27 +668,22 @@ class RTEhrenfestModel(RTTDDFTModel):
             V = self.Vpot
             try:
                 V.initialize()
-                try:
-                    V.build_collocation_cache(V.nblocks())
-                except Exception:
-                    pass
+                V.build_collocation_cache(V.nblocks())
             except Exception:
-                pass
+                print(
+                    "[Warning] Failed to initialize Psi4 DFT V_potential grid for gradients, previous V_potential will be used."
+                )
 
             if self.is_restricted:
-                Dm = psi4.core.Matrix.from_array(np.real((Da + Db) * 0.5))
+                Dm = psi4.core.Matrix.from_array(np.real(Da))
                 V.set_D([Dm])
             else:
-                Da_m = psi4.core.Matrix.from_array(
-                    np.real((Da + Da.T.transpose()) * 0.5)
-                )
-                Db_m = psi4.core.Matrix.from_array(
-                    np.real((Db + Db.T.transpose()) * 0.5)
-                )
+                Da_m = psi4.core.Matrix.from_array(np.real(Da))
+                Db_m = psi4.core.Matrix.from_array(np.real(Db))
                 V.set_D([Da_m, Db_m])
 
             Gxc_mat = V.compute_gradient()
-            g_xc = np.asarray(Gxc_mat).copy()
+            g_xc = np.asarray(Gxc_mat)
 
         # --- 5. Nuclear–nuclear repulsion gradient by hand ---
         g_nuc = np.zeros((nat, 3), dtype=float)

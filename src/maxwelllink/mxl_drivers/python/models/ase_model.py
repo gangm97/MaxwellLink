@@ -312,7 +312,7 @@ class ForceAugmenter(Calculator):
 
 
 class ASEModel(DummyModel):
-    """
+    r"""
     General BOMD (Born-Oppenheimer MD) driver using ASE.
 
     This model provides the two key functionalities like other Models supported by MaxwellLink:
@@ -320,7 +320,7 @@ class ASEModel(DummyModel):
     1. **MD coupled to E-field**: Injects F_i^ext = q_i E (uniform field) to the molecular forces
     in MD simulations, where q_i are per-atom charges (constant user-supplied or calculator-reported each step).
 
-    2. **Return source amplitude**: \dot{mu} = sum_i q_i v_i  (converted to atomic units)
+    2. **Return source amplitude**: $\dot{\mu} = \sum_i q_i v_i$ (converted to atomic units)
     """
 
     def __init__(

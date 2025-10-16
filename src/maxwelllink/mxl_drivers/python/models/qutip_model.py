@@ -102,11 +102,11 @@ def _build_model_tls(
     gamma_relax=0.0,
     gamma_dephase=0.0,
 ):
-    """
+    r"""
     Simple 2-level model preset like TLSModel, but using QuTiP objects.
     H0 = |e><e| * omega
     mu = mu12 * (|g><e| + |e><g|) along chosen axis
-    Lindblad: relaxation (\sigma_{-}) at rate gamma_relax, pure dephasing at gamma_dephase.
+    Lindblad: relaxation ($\sigma_{-}$) at rate gamma_relax, pure dephasing at gamma_dephase.
 
     This function provides a reference implementation for the `build_model(**kwargs)` function.
 
@@ -390,8 +390,8 @@ class QuTiPModel(DummyModel):
     # ------------ internal functions -------------
 
     def _effective_unitary_step(self, E_vec):
-        """
-        Fast path for closed-system evolution without collapse operators. H_eff = H0 - E \dot mu
+        r"""
+        Fast path for closed-system evolution without collapse operators. $H_{eff} = H_0 - E \dot \mu$
 
         + **`E_vec`** (array-like): Electric field vector [Ex, Ey, Ez] at current time step.
         """

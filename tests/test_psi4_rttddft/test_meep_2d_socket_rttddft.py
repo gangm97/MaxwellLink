@@ -113,7 +113,7 @@ def test_2d_rttddft_psi4_via_socket(plotting=False):
             print("xyz_path", xyz_path)
             driver_argv = _resolve_driver_path() + shlex.split(
                 f"--model rttddft --port {port} "
-                f'--param "molecule_xyz={xyz_path}, functional=SCF, basis=sto-3g, delta_kick_au=1e-1, dt_rttddft_au=0.04" '
+                f'--param "molecule_xyz={xyz_path}, functional=SCF, basis=sto-3g, delta_kick_au=1e-1, dt_rttddft_au=0.04, electron_propagation=pc, threshold_pc=1e-6" '
             )
             print("driver_argv", driver_argv)
             # Use a fresh, non-blocking subprocess; inherit env/stdio for easy debugging

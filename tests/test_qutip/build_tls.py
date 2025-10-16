@@ -10,11 +10,11 @@ def build_model(
     gamma_relax=0.0,
     gamma_dephase=0.0,
 ):
-    """
+    r"""
     Simple 2-level model preset like TLSModel, but using QuTiP objects.
-    H0 = |e><e| * omega
-    mu = mu12 * (|g><e| + |e><g|) along chosen axis
-    Lindblad: relaxation (\sigma_{-}) at rate gamma_relax, pure dephasing at gamma_dephase.
+    H0 = $\vert e \rangle \langle e \vert$ * omega
+    mu = mu12 * ($\vert g \rangle \langle e \vert$ + $\vert e \rangle \langle g \vert$) along chosen axis
+    Lindblad: relaxation ($\sigma_{-}$) at rate gamma_relax, pure dephasing at gamma_dephase.
 
     This function provides a reference implementation for the `build_model(**kwargs)` function.
 

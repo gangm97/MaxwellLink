@@ -99,8 +99,8 @@ class DummyMolecule:
             "To couple MEEP with molecular dynamics, we set [c] = [epsilon_0] = [mu_0] = [hbar] = 1. ",
             "By further defining the time unit as %.2E fs, we can convert the MEEP unit (mu) to atomic units (au) as follows:"
             % time_units_in_fs,
-            "- angular frequency [\omega]: 1 mu = %.4E eV"
-            % (41.357 * 0.1 / time_units_in_fs),
+            r"- angular frequency [$\omega$]:",
+            "1 mu = %.4E eV" % (41.357 * 0.1 / time_units_in_fs),
             "- length: 1 mu = %.3E nm" % (4.771 * time_units_in_fs / 0.1),
             "- dipole moment: 1 mu = %.4E Debye" % (1.8970 * time_units_in_fs / 0.1),
         )
