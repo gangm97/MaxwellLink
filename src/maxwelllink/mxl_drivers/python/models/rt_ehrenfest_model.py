@@ -73,7 +73,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         rng_seed: int = 1234,
         homo_to_lumo: bool = False,
         partial_charges: list = None,
-        fix_nuclei_indices: list = None
+        fix_nuclei_indices: list = None,
     ):
         """
         Initialize the necessary parameters for the RT-TDDFT quantum dynamics model.
@@ -556,7 +556,7 @@ class RTEhrenfestModel(RTTDDFTModel):
 
         if self.fix_nuclei_indices is not None:
             for idx in self.fix_nuclei_indices:
-                forces[idx, :] = 0.0
+                F[idx, :] = 0.0
 
         timer_end = time.time()
         elapsed_time = timer_end - timer_start
@@ -635,9 +635,9 @@ class RTEhrenfestModel(RTTDDFTModel):
             # Convert to NumPy (nbf,nbf,nbf,nbf)
             dERI = [np.asarray(T) for T in dERI_xyz]
             for c in range(3):
-                g_2e_coul[A, c] += 0.5 * np.einsum(
-                    "pq,rs,pqrs->", D, D, dERI[c], optimize=True
-                ).real
+                g_2e_coul[A, c] += (
+                    0.5 * np.einsum("pq,rs,pqrs->", D, D, dERI[c], optimize=True).real
+                )
                 if use_hf_exchange:
                     g_2e_exch_alpha[A, c] -= (
                         0.5
@@ -652,22 +652,46 @@ class RTEhrenfestModel(RTTDDFTModel):
                     g_2e_exch_alpha_real[A, c] -= (
                         0.5
                         * self.alpha_hfx
-                        * np.einsum("pr,qs,pqrs->", np.real(Da), np.real(Da), dERI[c], optimize=True)
+                        * np.einsum(
+                            "pr,qs,pqrs->",
+                            np.real(Da),
+                            np.real(Da),
+                            dERI[c],
+                            optimize=True,
+                        )
                     )
                     g_2e_exch_beta_real[A, c] -= (
                         0.5
                         * self.alpha_hfx
-                        * np.einsum("pr,qs,pqrs->", np.real(Db), np.real(Db), dERI[c], optimize=True)
+                        * np.einsum(
+                            "pr,qs,pqrs->",
+                            np.real(Db),
+                            np.real(Db),
+                            dERI[c],
+                            optimize=True,
+                        )
                     )
                     g_2e_exch_alpha_imag[A, c] -= (
                         0.5
                         * self.alpha_hfx
-                        * np.einsum("pr,qs,pqrs->", np.imag(Da), np.imag(Da), dERI[c], optimize=True)
+                        * np.einsum(
+                            "pr,qs,pqrs->",
+                            np.imag(Da),
+                            np.imag(Da),
+                            dERI[c],
+                            optimize=True,
+                        )
                     )
                     g_2e_exch_beta_imag[A, c] -= (
                         0.5
                         * self.alpha_hfx
-                        * np.einsum("pr,qs,pqrs->", np.imag(Db), np.imag(Db), dERI[c], optimize=True)
+                        * np.einsum(
+                            "pr,qs,pqrs->",
+                            np.imag(Db),
+                            np.imag(Db),
+                            dERI[c],
+                            optimize=True,
+                        )
                     )
         g_2e_exch = g_2e_exch_alpha + g_2e_exch_beta
 
@@ -719,8 +743,12 @@ class RTEhrenfestModel(RTTDDFTModel):
                 Dm = psi4.core.Matrix.from_array(np.real((Da + Db) * 0.5))
                 V.set_D([Dm])
             else:
-                Da_m = psi4.core.Matrix.from_array(np.real((Da + Da.T.transpose()) * 0.5))
-                Db_m = psi4.core.Matrix.from_array(np.real((Db + Db.T.transpose()) * 0.5))
+                Da_m = psi4.core.Matrix.from_array(
+                    np.real((Da + Da.T.transpose()) * 0.5)
+                )
+                Db_m = psi4.core.Matrix.from_array(
+                    np.real((Db + Db.T.transpose()) * 0.5)
+                )
                 V.set_D([Da_m, Db_m])
 
             Gxc_mat = V.compute_gradient()
@@ -759,7 +787,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         timer_end = time.time()
         elapsed_time = timer_end - timer_start
         if self.verbose:
-            '''
+            """
             print("Force components (Eh/Bohr):")
             print("begin components")
             print("  1e kinetic:\n", g_1e_T)
@@ -779,7 +807,7 @@ class RTEhrenfestModel(RTTDDFTModel):
                 print("  XC:\n", g_xc)
             print("  nuclear-field:\n", g_field_nuc)
             print("end of components\n")
-            '''
+            """
             print("Total Ehrenfest forces (Eh/Bohr):\n", forces)
             print(f"Ehrenfest force computation time: {elapsed_time:.6f} seconds")
 
