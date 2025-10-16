@@ -6,6 +6,4 @@ Welcome to MaxwellLink’s documentation!
    :caption: Contents:
 
    usage
-   api/maxwelllink
-   api/modules
 
