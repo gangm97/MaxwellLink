@@ -1,5 +1,5 @@
 import numpy as np
-from ..molecule_abstract import Molecule
+from ..molecule import Molecule
 
 
 class DummyEMUnits:

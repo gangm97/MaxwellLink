@@ -7,7 +7,7 @@ import atexit
 
 from ..sockets import SocketHub
 from .dummy_em import DummyEMUnits
-from ..molecule_abstract import Molecule, Vector3
+from ..molecule import Molecule, Vector3
 from ..units import FS_TO_AU
 
 try:
