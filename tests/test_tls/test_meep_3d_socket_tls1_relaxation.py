@@ -175,7 +175,6 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket(plotting=False):
                     proc.kill()
 
 
-
 @pytest.mark.core
 def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
     """

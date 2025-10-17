@@ -309,5 +309,6 @@ def test_2d_rttddft_psi4_via_socket_v2(plotting=False):
                 except subprocess.TimeoutExpired:
                     proc.kill()
 
+
 if __name__ == "__main__":
     test_2d_rttddft_psi4_via_socket_v2(plotting=True)

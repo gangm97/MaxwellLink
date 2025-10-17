@@ -169,5 +169,6 @@ def test_2d_1tls_relaxation_matches_analytical_v2(plotting=False):
             std_dev < 3e-3 and max_abs_diff < 8e-3
         ), f"std_dev={std_dev:.3g}, max_abs_diff={max_abs_diff:.3g}"
 
+
 if __name__ == "__main__":
     test_2d_1tls_relaxation_matches_analytical_v2(plotting=True)

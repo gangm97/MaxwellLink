@@ -96,7 +96,10 @@ class TLSModel(DummyModel):
 
         # Rebuild expHs with new dt sent from SocketHub
         self.expHs = expm(-1j * self.dt * self.Hs / 2.0)
-        print("init TLSModel with dt = %.6f a.u., molecule ID = %d" % (self.dt, self.molecule_id))
+        print(
+            "init TLSModel with dt = %.6f a.u., molecule ID = %d"
+            % (self.dt, self.molecule_id)
+        )
 
         # Consider whether to restart from a checkpoint. We do this here because this function
         # is called in the driver during the INIT stage of the socket communication.

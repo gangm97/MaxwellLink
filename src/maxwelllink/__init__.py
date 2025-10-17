@@ -43,7 +43,7 @@ def __getattr__(name):
         "update_molecules_no_mpi",
         "update_molecules_no_socket",
     }:
-        from .molecule_fast import (
+        from .molecule_legacy import (
             TLSMolecule,
             SocketMolecule,
             update_molecules,
@@ -56,7 +56,7 @@ def __getattr__(name):
     if name in {
         "Molecule",
     }:
-        from .molecule_abstract import (
+        from .molecule import (
             Molecule,
         )
 

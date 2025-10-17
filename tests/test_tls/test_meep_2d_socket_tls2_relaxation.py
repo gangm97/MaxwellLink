@@ -124,7 +124,7 @@ def test_2d_2tls_relaxation_matches_analytical_via_socket(plotting=False):
 
         # Run the coupled loop; the driver provides the source amplitude each step
         sim.run(
-                mxl.update_molecules(
+            mxl.update_molecules(
                 hub=hub, sources_non_molecule=[], molecules=[molecule1, molecule2]
             ),
             until=90,
@@ -350,6 +350,7 @@ def test_2d_2tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
                     proc2.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
                     proc2.kill()
+
 
 if __name__ == "__main__":
     test_2d_2tls_relaxation_matches_analytical_via_socket_v2(plotting=True)

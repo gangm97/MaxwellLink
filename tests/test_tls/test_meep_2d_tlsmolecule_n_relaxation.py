@@ -88,6 +88,7 @@ def test_2d_ntls_relaxation_matches_analytical(plotting=False):
             std_dev < 3e-3 and max_abs_diff < 8e-3
         ), f"std_dev={std_dev:.3g}, max_abs_diff={max_abs_diff:.3g}"
 
+
 @pytest.mark.core
 def test_2d_ntls_relaxation_matches_analytical_v2(plotting=False):
     """
@@ -111,18 +112,18 @@ def test_2d_ntls_relaxation_matches_analytical_v2(plotting=False):
     tls_lst = []
     for idx in range(n_tls):
         tls = mxl.Molecule(
-        driver="tls",
-        center=mp.Vector3(0, 0, 0),
-        size=mp.Vector3(1, 1, 1),
-        sigma=0.1,
-        dimensions=2,
-        driver_kwargs={
-            "omega": 2.4188843e-1,
-            "mu12": 1.870819866e2 / np.sqrt(n_tls),
-            "orientation": 2,
-            "pe_initial": 1e-2,
-            "verbose": False,
-        },
+            driver="tls",
+            center=mp.Vector3(0, 0, 0),
+            size=mp.Vector3(1, 1, 1),
+            sigma=0.1,
+            dimensions=2,
+            driver_kwargs={
+                "omega": 2.4188843e-1,
+                "mu12": 1.870819866e2 / np.sqrt(n_tls),
+                "orientation": 2,
+                "pe_initial": 1e-2,
+                "verbose": False,
+            },
         )
         tls_lst.append(tls)
 
@@ -175,6 +176,7 @@ def test_2d_ntls_relaxation_matches_analytical_v2(plotting=False):
         assert (
             std_dev < 3e-3 and max_abs_diff < 8e-3
         ), f"std_dev={std_dev:.3g}, max_abs_diff={max_abs_diff:.3g}"
+
 
 if __name__ == "__main__":
     test_2d_ntls_relaxation_matches_analytical_v2(plotting=True)

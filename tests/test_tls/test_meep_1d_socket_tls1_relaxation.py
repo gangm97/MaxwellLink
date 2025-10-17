@@ -301,5 +301,6 @@ def test_1d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
                 except subprocess.TimeoutExpired:
                     proc.kill()
 
+
 if __name__ == "__main__":
     test_1d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=True)

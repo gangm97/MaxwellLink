@@ -123,10 +123,12 @@ class MeepUnits(DummyEMUnits):
 
 
 class MoleculeMeepWrapper:
-    def __init__(self, 
-                 time_units_fs: float = 0.1, 
-                 dt: Optional[float] = None,
-                 molecule: Molecule = None):
+    def __init__(
+        self,
+        time_units_fs: float = 0.1,
+        dt: Optional[float] = None,
+        molecule: Molecule = None,
+    ):
         self.m = molecule
         self.m._refresh_time_units(time_units_fs)
         if dt is not None:
@@ -322,12 +324,13 @@ class MoleculeMeepWrapper:
     def initialize_driver(self):
         self.m.initialize_driver(self.dt_au, self.molecule_id)
         self.d_f = self.m.d_f
-    
+
     def propagate(self, efield_vec3):
         self.m.propagate(efield_vec3)
-    
+
     def calc_amp_vector(self):
         return self.m.calc_amp_vector()
+
 
 # ---------- NON-SOCKET Step Function for MEEP ----------
 def update_molecules_no_socket(
@@ -396,9 +399,7 @@ def update_molecules_no_socket(
             extra_blob = m.d_f.append_additional_data()
             if extra_blob:
                 try:
-                    m.additional_data_history.append(
-                        extra_blob
-                    )
+                    m.additional_data_history.append(extra_blob)
                 except Exception:
                     pass
 
@@ -752,7 +753,7 @@ class MeepSimulation(mp.Simulation):
         super().__init__(**kwargs)
         if self.Courant != 0.5:
             raise RuntimeError("MaxwellLink currently only supports Courant=0.5!")
-        
+
         self.socket_hub = hub
         self.molecules = molecules if molecules is not None else []
         self.time_units_fs = time_units_fs
@@ -764,12 +765,10 @@ class MeepSimulation(mp.Simulation):
         for idx in range(len(self.molecules)):
             # use meep wrapper for this molecule
             m = MoleculeMeepWrapper(
-                time_units_fs=time_units_fs, 
-                dt=self.dt,
-                molecule=self.molecules[idx]
+                time_units_fs=time_units_fs, dt=self.dt, molecule=self.molecules[idx]
             )
             self.molecules[idx] = m
-        
+
         if len(self.molecules) > 0:
             self.molecules[0].em_units.units_helper(self.dx, self.dt)
 
