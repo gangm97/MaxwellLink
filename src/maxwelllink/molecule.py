@@ -26,15 +26,6 @@ class Vector3:
     """
     Minimal 3D vector container used to avoid depending on ``mp.Vector3`` in the
     abstract layer.
-
-    Attributes
-    ----------
-    x : float, default: 0.0
-        X component.
-    y : float, default: 0.0
-        Y component.
-    z : float, default: 0.0
-        Z component.
     """
 
     x: float = 0.0

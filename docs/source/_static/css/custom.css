@@ -36,13 +36,24 @@ body[data-theme="dark"] {
 /* --- Hero block on the landing page --- */
 .mxl-hero {
   position: relative;
-  margin: 0 auto 2.5rem;
-  padding: clamp(1.8rem, 3vw, 2.6rem);
-  border-radius: var(--mxl-radius-lg);
+  margin: 0 calc(50% - 50vw);
+  width: 100vw;
+  max-width: 100vw;
+  box-sizing: border-box;
+  padding: clamp(2.4rem, 5vw, 4.2rem) clamp(2rem, 6vw, 6rem);
+  min-height: 100vh;
+  border-radius: 0;
   background: var(--mxl-hero-gradient);
+  background-repeat: no-repeat;
+  background-size: cover;
   color: #fff;
   overflow: hidden;
-  box-shadow: var(--mxl-shadow-soft);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
 .mxl-hero::after {
@@ -59,7 +70,21 @@ body[data-theme="dark"] {
   z-index: 2;
 }
 
+.mxl-hero__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: clamp(1.1rem, 2vw, 2rem);
+  width: min(760px, 90vw);
+}
+
 .mxl-hero__badge {
+  position: absolute;
+  top: clamp(2.4rem, 5vw, 4.2rem);
+  left: clamp(2rem, 6vw, 6rem);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -70,27 +95,30 @@ body[data-theme="dark"] {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 0.75rem;
+  z-index: 3;
 }
 
 .mxl-hero__title {
   font-size: clamp(1.8rem, 3.2vw, 2.4rem);
   line-height: 1.05;
-  margin: 0.9rem 0 1.25rem;
+  margin: 0;
   font-weight: 700;
 }
 
 .mxl-hero__lead {
   font-size: clamp(0.95rem, 1.05vw, 1.05rem);
-  max-width: 42rem;
-  margin-bottom: 1.6rem;
+  max-width: min(680px, 90vw);
+  margin: 0;
   color: rgba(255, 255, 255, 0.88);
 }
 
 .mxl-hero__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.9rem;
+  gap: clamp(1.1rem, 2.2vw, 1.8rem);
+  margin-top: clamp(1.2rem, 2.4vw, 2.2rem);
+  margin-bottom: clamp(-0.6rem, -1vw, -0.3rem);
+  justify-content: center;
 }
 
 .mxl-button {
@@ -128,6 +156,19 @@ body[data-theme="dark"] {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.mxl-button--secondary {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 10px 20px -18px rgba(5, 22, 51, 0.65);
+}
+
+.mxl-button--secondary:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 14px 24px -18px rgba(5, 22, 51, 0.7);
+}
+
 .mxl-hero__stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -137,6 +178,8 @@ body[data-theme="dark"] {
   background: rgba(6, 21, 40, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.22);
   backdrop-filter: blur(10px);
+  width: min(640px, 90vw);
+  margin: 0;
 }
 
 .mxl-hero__stats dt {
@@ -155,12 +198,29 @@ body[data-theme="dark"] {
 
 @media (max-width: 720px) {
   .mxl-hero {
-    padding: 1.9rem;
+    padding: 2.8rem 1.8rem;
+    min-height: 100vh;
+  }
+
+  .mxl-hero__content {
+    width: 100%;
+    gap: 1.4rem;
+  }
+
+  .mxl-hero__lead {
+    max-width: 100%;
+  }
+
+  .mxl-hero__badge {
+    top: 1.6rem;
+    left: 1.4rem;
   }
 
   .mxl-hero__actions {
     flex-direction: column;
     align-items: stretch;
+    margin-top: 1.3rem;
+    margin-bottom: 3.5rem;
   }
 }
 
@@ -280,4 +340,59 @@ body[data-theme="dark"] {
   border-top: 1px solid var(--mxl-card-border);
   padding-top: 2rem;
   margin-top: 3rem;
+}
+
+/* --- Landing page layout overrides --- */
+body.mxl-landing {
+  overflow-x: hidden;
+}
+
+body.mxl-landing .sidebar-drawer,
+body.mxl-landing .sidebar-toggle,
+body.mxl-landing .sidebar-overlay,
+body.mxl-landing .toc-overlay,
+body.mxl-landing .mobile-header,
+body.mxl-landing .content-icon-container,
+body.mxl-landing .back-to-top,
+body.mxl-landing .related-pages,
+body.mxl-landing footer,
+body.mxl-landing .theme-toggle-container,
+body.mxl-landing .skip-to-content {
+  display: none !important;
+}
+
+body.mxl-landing .page {
+  margin: 0;
+  max-width: none;
+  width: 100%;
+}
+
+body.mxl-landing .main {
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+}
+
+body.mxl-landing main {
+  padding-top: 0;
+}
+
+body.mxl-landing .main > .content {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+body.mxl-landing .main > .content > .article-container,
+body.mxl-landing .main > .content > .article-container > article {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  width: 100%;
 }

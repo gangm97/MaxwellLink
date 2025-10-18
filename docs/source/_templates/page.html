@@ -2,32 +2,43 @@
 
 {% block content %}
   {% if pagename == "index" %}
+    <script>
+      document.body.classList.add("mxl-landing");
+    </script>
     <section class="mxl-hero">
       <span class="mxl-hero__badge">Hybrid EM · Quantum Workflow</span>
-      <h1 class="mxl-hero__title">MaxwellLink: A light-matter simulator</h1>
-      <p class="mxl-hero__lead">
-        MaxwellLink synchronises time-domain EM solvers with first-principles
-        quantum chemistry, molecular dynamics, and model Hamiltonians.
-      </p>
-      <div class="mxl-hero__actions">
-        <a class="mxl-button mxl-button--primary" href="{{ pathto('installation') }}">
-          Install MaxwellLink
-        </a>
-        <a class="mxl-button mxl-button--ghost" href="{{ pathto('tutorials/index') }}">
-          Launch Tutorials
-        </a>
+      <div class="mxl-hero__content">
+        <h1 class="mxl-hero__title">MaxwellLink: Self-consistent light-matter simulations</h1>
+        <p class="mxl-hero__lead">
+          A flexible framework for connecting EM solvers with a wide range of molecular drivers, embracing the state-of-art ecosystems in both computational electromagnetics and quantum chemistry to efficiently simulate light-matter dynamics across multiple scales.
+        </p>
+        <div class="mxl-hero__actions">
+          <a class="mxl-button mxl-button--primary" href="{{ pathto('installation') }}">
+            Install MaxwellLink
+          </a>
+          <a class="mxl-button mxl-button--secondary" href="{{ pathto('overview') }}">
+            View Documentation
+          </a>
+          <a class="mxl-button mxl-button--ghost" href="{{ pathto('tutorials/index') }}">
+            Launch Tutorials
+          </a>
+        </div>
+        <dl class="mxl-hero__stats">
+          <div>
+            <dt>Electromagnetics</dt>
+            <dd>Meep FDTD · Single-mode cavity</dd>
+          </div>
+          <div>
+            <dt>Driver Ecosystem</dt>
+            <dd>Psi4 RT-Ehrenfest · ASE / LAMMPS MD · QuTiP models </dd>
+          </div>
+        </dl>
       </div>
-      <dl class="mxl-hero__stats">
-        <div>
-          <dt>Electromagnetics</dt>
-          <dd>Meep FDTD &amp; single-mode cavity</dd>
-        </div>
-        <div>
-          <dt>Driver Ecosystem</dt>
-          <dd>Psi4 RT-Ehrenfest · ASE · LAMMPS · QuTiP</dd>
-        </div>
-      </dl>
     </section>
+  {% else %}
+    <script>
+      document.body.classList.remove("mxl-landing");
+    </script>
+    {{ super() }}
   {% endif %}
-  {{ super() }}
 {% endblock %}

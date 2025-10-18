@@ -14,7 +14,7 @@ try:
     release = pkg_version("maxwelllink")
     version = ".".join(release.split(".")[:2])
 except PackageNotFoundError:
-    release = version = "0.1.0"
+    release = version = "0.2.0"
 
 # --- Extensions ---
 extensions = [
