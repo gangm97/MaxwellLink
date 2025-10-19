@@ -13,7 +13,7 @@ from typing import Optional, Dict, List
 import atexit
 
 from ..sockets import SocketHub
-from .dummy_em import DummyEMUnits
+from .dummy_em import DummyEMUnits, MoleculeDummyWrapper
 from ..molecule import Molecule, Vector3
 from ..units import FS_TO_AU
 
@@ -230,7 +230,10 @@ class MeepUnits(DummyEMUnits):
         )
 
 
-class MoleculeMeepWrapper:
+class MoleculeMeepWrapper(MoleculeDummyWrapper):
+    """
+    Wrapper that adapts a ``Molecule`` to Meep, handling units, sources, and IO.
+    """
 
     def __init__(
         self,
@@ -239,7 +242,7 @@ class MoleculeMeepWrapper:
         molecule: Molecule = None,
     ):
         """
-        Wrapper that adapts a ``Molecule`` to Meep, handling units, sources, and IO.
+        Initialize the Meep molecule wrapper.
 
         Parameters
         ----------
@@ -250,7 +253,8 @@ class MoleculeMeepWrapper:
         molecule : Molecule
             The molecule to wrap and couple to Meep.
         """
-        self.m = molecule
+        super().__init__(molecule)
+        # self.m = molecule
         self.m._refresh_time_units(time_units_fs)
         if dt is not None:
             self.m._refresh_time_step(dt)
@@ -465,42 +469,6 @@ class MoleculeMeepWrapper:
             )
         return [np.real(x), np.real(y), np.real(z)]
 
-    def initialize_driver(self):
-        """
-        Initialize the wrapped molecule's driver (non-socket mode).
-
-        Notes
-        -----
-        Uses the molecule's cached ``dt_au`` and ``molecule_id``.
-        """
-
-        self.m.initialize_driver(self.dt_au, self.molecule_id)
-        self.d_f = self.m.d_f
-
-    def propagate(self, efield_vec3):
-        """
-        Propagate the wrapped molecule for one EM step.
-
-        Parameters
-        ----------
-        efield_vec3 : array-like of float, shape (3,)
-            Effective electric field vector in atomic units.
-        """
-
-        self.m.propagate(efield_vec3)
-
-    def calc_amp_vector(self):
-        """
-        Compute and return the current source amplitude vector from the molecule.
-
-        Returns
-        -------
-        numpy.ndarray of float, shape (3,)
-            Source amplitudes in atomic units.
-        """
-
-        return self.m.calc_amp_vector()
-
 
 # ---------- NON-SOCKET Step Function for MEEP ----------
 def update_molecules_no_socket(
@@ -535,8 +503,7 @@ def update_molecules_no_socket(
 
             for idx, m in enumerate(molecules):
                 # initialize molecular drivers directly
-                m.molecule_id = idx  # set by hand
-                m.initialize_driver()
+                m.initialize_driver(assigned_id=idx)
                 if not m.sources:
                     m._init_sources()
             unique_sources = list(

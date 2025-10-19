@@ -10,7 +10,6 @@ embedded (non-socket) molecular drivers.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Union
 
 import numpy as np
@@ -18,6 +17,16 @@ import numpy as np
 from ..molecule import Molecule
 from ..sockets import SocketHub
 from ..units import FS_TO_AU
+from .dummy_em import DummyEMUnits, MoleculeDummyWrapper, DummyEMSimulation
+
+
+class SingleModeUnits(DummyEMUnits):
+    """
+    EM units for single-mode cavity simulations (1:1 to atomic units).
+    """
+
+    def __init__(self):
+        super().__init__()
 
 
 def _axis_to_index(axis: Union[int, str]) -> int:
@@ -47,68 +56,49 @@ def _axis_to_index(axis: Union[int, str]) -> int:
     return idx
 
 
-@dataclass
-class MoleculeSingleModeWrapper:
+class MoleculeSingleModeWrapper(MoleculeDummyWrapper):
     """
-    Internal helper tracking per-molecule state for the single-mode cavity.
+    Wrapper that adapts a ``Molecule`` to SingleModeSimulation, handling units, sources, and IO.
     """
 
-    molecule: Molecule
-    dt_au: float
-    axis: int
+    def __init__(self, molecule: Molecule, dt_au: float, axis: Union[int, str]):
+        """
+        Initialize the SingleMode molecule wrapper.
+        """
+        super().__init__(molecule=molecule)
+        self.dt_au = float(dt_au)
+        if self.dt_au <= 0.0:
+            raise ValueError("dt_au must be positive.")
+        # direction of the molecule to be coupled to the cavity mode
+        self.axis = _axis_to_index(axis)
 
-    def __post_init__(self):
-        self.mode = self.molecule.mode
-        self.hub: Optional[SocketHub] = getattr(self.molecule, "hub", None)
-        self.molecule_id: int = getattr(self.molecule, "molecule_id", -1)
-        self.init_payload: Dict = dict(self.molecule.init_payload)
+        # retrieve molecule settings from the wrapped Molecule
+        self.mode = self.m.mode
+        self.hub: Optional[SocketHub] = getattr(self.m, "hub", None)
+        self.molecule_id: int = getattr(self.m, "molecule_id", -1)
+        self.init_payload: Dict = dict(self.m.init_payload)
         self.last_amp: np.ndarray = np.zeros(3, dtype=float)
         self.time_units_fs = 1.0 / FS_TO_AU  # so that dt_em == dt_au
         # Refresh time-units and dt to keep init payloads consistent
-        self.molecule._refresh_time_units(self.time_units_fs)
-        self.molecule._refresh_time_step(self.dt_au)
-        self.dt_au = self.molecule.dt_au
+        self.m._refresh_time_units(self.time_units_fs)
+        self.m._refresh_time_step(self.dt_au)
         self.init_payload["dt_au"] = self.dt_au
-        self.additional_data_history = self.molecule.additional_data_history
+        self.additional_data_history = self.m.additional_data_history
 
         if self.mode == "non-socket":
             if self.molecule_id < 0:
                 self.molecule_id = 0  # will be overwritten by simulation
-            self.molecule.molecule_id = self.molecule_id
-
-    def initialize_driver(self, assigned_id: int):
-        """
-        Initialize non-socket drivers with the current time step.
-        """
-
-        self.molecule_id = int(assigned_id)
-        self.molecule.molecule_id = self.molecule_id
-        self.molecule.initialize_driver(self.dt_au, self.molecule_id)
-        self.driver = self.molecule.d_f
-
-    def propagate(self, efield_vec3: Sequence[float]):
-        """
-        Propagate the molecule for one cavity step.
-        """
-
-        self.molecule.propagate(efield_vec3)
-
-    def calc_amp_vector(self) -> np.ndarray:
-        """
-        Retrieve the source amplitude vector in atomic units.
-        """
-
-        return np.asarray(self.molecule.calc_amp_vector(), dtype=float)
+            self.m.molecule_id = self.molecule_id
 
     def append_additional_data(self, time_au: float):
         """
-        Store additional diagnostics supplied by non-socket drivers.
+        Store additional molecular data supplied by non-socket drivers.
         """
 
         extra = {}
-        if hasattr(self, "driver"):
+        if hasattr(self, "d_f"):
             try:
-                extra = dict(self.driver.append_additional_data() or {})
+                extra = dict(self.d_f.append_additional_data() or {})
             except Exception:
                 extra = {}
         if "time_au" not in extra:
@@ -117,19 +107,19 @@ class MoleculeSingleModeWrapper:
             self.additional_data_history.append(extra)
 
 
-class SingleModeSimulation:
-    """
+class SingleModeSimulation(DummyEMSimulation):
+    r"""
     Damped harmonic oscillator coupled to MaxwellLink molecules.
 
-    The field obeys
+    The cavity mode (classical harmonic oscillator) obeys
 
     .. math::
 
-        \\ddot{E} + 2\\kappa \\dot{E} + \\omega_0^2 E =
-        F_{\\text{drive}}(t) + g \\sum_i \\Delta\\dot{\\mu}_{i, z},
+       \dot{q} = p, \qquad
+       \dot{p} = -\omega_c^{2}\, q \;+\; g \sum_i \frac{d\mu_i}{dt} \;-\; \gamma_c\, p \;+\; D(t),
 
     where :math:`g` is ``coupling_strength`` and the sum runs over the selected
-    molecule axis. All quantities are in atomic units.
+    molecular axis of all molecules. All quantities are in atomic units.
     """
 
     def __init__(
@@ -142,8 +132,8 @@ class SingleModeSimulation:
         coupling_strength: float = 1.0,
         coupling_axis: Union[int, str] = 2,
         hub: Optional[SocketHub] = None,
-        field_initial: float = 0.0,
-        velocity_initial: float = 0.0,
+        qc_initial: float = 0.0,
+        pc_initial: float = 0.0,
         record_history: bool = True,
     ):
         """
@@ -165,13 +155,15 @@ class SingleModeSimulation:
             Component of the molecular amplitude used for coupling.
         hub : SocketHub, optional
             Socket hub shared by all socket-mode molecules.
-        field_initial : float, default: 0.0
+        qc_initial : float, default: 0.0
             Initial cavity field amplitude :math:`E(0)` (a.u.).
-        velocity_initial : float, default: 0.0
+        pc_initial : float, default: 0.0
             Initial time derivative :math:`\\dot{E}(0)` (a.u.).
         record_history : bool, default: True
             Record time, field, velocity, drive, and molecular response histories.
         """
+
+        super().__init__(hub=hub, molecules=molecules)
 
         self.dt = float(dt_au)
         if self.dt <= 0.0:
@@ -201,33 +193,36 @@ class SingleModeSimulation:
                 raise ValueError(
                     "All socket-mode molecules must share the same SocketHub."
                 )
-            self.hub: SocketHub = hub or self.socket_wrappers[0].hub  # type: ignore
+            self.hub: SocketHub = hub or self.socket_wrappers[0].hub
             if self.hub is None:
                 raise ValueError("Socket-mode molecules require a SocketHub instance.")
         else:
-            self.hub = None  # type: ignore
+            self.hub = None
 
         # Assign IDs and initialize non-socket drivers
-        next_id = 0
+        # By default, SocketHub assigns IDs starting from 0, so we start
+        # non-socket IDs after all socket ones.
+        next_id = len(self.socket_wrappers)
         for wrapper in self.non_socket_wrappers:
             wrapper.initialize_driver(next_id)
             next_id += 1
 
         self.time = 0.0
-        self.field = float(field_initial)
-        self.velocity = float(velocity_initial)
+        self.qc = float(qc_initial)
+        self.pc = float(pc_initial)
+        self.acceleration = self._calc_acceleration(self.time, 0.0, self.qc)
 
         self.record_history = bool(record_history)
         if self.record_history:
             self.time_history: List[float] = [self.time]
-            self.field_history: List[float] = [self.field]
-            self.velocity_history: List[float] = [self.velocity]
+            self.qc_history: List[float] = [self.qc]
+            self.pc_history: List[float] = [self.pc]
             self.drive_history: List[float] = [self._evaluate_drive(self.time)]
             self.molecule_response_history: List[float] = [0.0]
         else:
             self.time_history = []
-            self.field_history = []
-            self.velocity_history = []
+            self.qc_history = []
+            self.pc_history = []
             self.drive_history = []
             self.molecule_response_history = []
 
@@ -267,6 +262,13 @@ class SingleModeSimulation:
             responses = self.hub.step_barrier(requests)
         return responses
 
+    def _calc_acceleration(self, time: float, amp_sum: float, qc: float) -> float:
+        drive_val = self._evaluate_drive(time)
+        acceleration = (
+            drive_val + self.coupling_strength * amp_sum - (self.frequency**2) * qc
+        )
+        return acceleration
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -275,7 +277,11 @@ class SingleModeSimulation:
         Advance the simulation by one time step.
         """
 
-        efield_vec = np.array([0.0, 0.0, self.field], dtype=float)
+        # 1. velocity-verlet part 1: qc update from t to t + dt
+        self.qc += self.dt * self.pc + 0.5 * self.dt**2 * self.acceleration
+
+        # 2. propagate molecules to t + dt
+        efield_vec = np.array([0.0, 0.0, self.qc], dtype=float)
 
         # Non-socket molecules
         for wrapper in self.non_socket_wrappers:
@@ -305,24 +311,26 @@ class SingleModeSimulation:
                         pass
 
         amp_sum = sum(wrapper.last_amp[self.axis] for wrapper in self.wrappers)
-        drive_val = self._evaluate_drive(self.time)
 
-        acceleration = (
-            drive_val
-            + self.coupling_strength * amp_sum
-            - 2.0 * self.damping * self.velocity
-            - (self.frequency**2) * self.field
+        # 3. velocity-verlet part 2: calculate acceleration at t + dt
+        acceleration_next = self._calc_acceleration(
+            self.time + self.dt, amp_sum, self.qc
         )
 
-        self.velocity += self.dt * acceleration
-        self.field += self.dt * self.velocity
+        # 4. velocity-verlet part 3: pc update from t to t + dt
+        self.pc += 0.5 * self.dt * (self.acceleration + acceleration_next)
+        # 4.1 apply damping to the velocity using the exponential decay formula
+        self.pc *= np.exp(-self.damping * self.dt)
+
+        # 5. update acceleration and time
         self.time += self.dt
+        self.acceleration = acceleration_next
 
         if self.record_history:
             self.time_history.append(self.time)
-            self.field_history.append(self.field)
-            self.velocity_history.append(self.velocity)
-            self.drive_history.append(drive_val)
+            self.qc_history.append(self.qc)
+            self.pc_history.append(self.pc)
+            self.drive_history.append(self._evaluate_drive(self.time))
             self.molecule_response_history.append(float(amp_sum))
 
     def run(self, until: Optional[float] = None, steps: Optional[int] = None):
