@@ -118,6 +118,11 @@ class Molecule:
             raise ValueError("Molecule only supports 1D, 2D and 3D simulations.")
 
         # identify the spatial polarization kernel function
+        if self.size is None:
+            self.size = Vector3(0.0, 0.0, 0.0)
+        if self.center is None:
+            self.center = Vector3(0.0, 0.0, 0.0)
+
         self.polarization_fingerprint = {
             "dimensions": self.dimensions,
             "sigma": self.sigma,

@@ -1,57 +1,49 @@
 Single-Mode Cavity
 ==================
 
-The :mod:`maxwelllink.em_solvers.single_mode_cavity` module implements a
-lightweight cavity solver that replaces the full FDTD grid with a single damped
-harmonic oscillator. It runs entirely in atomic units and can couple to the same
-``Molecule`` abstractions used by the Meep backend, making it ideal for quick
-prototyping, regression tests, or scenarios where a single optical mode
-suffices.
+The :mod:`maxwelllink.em_solvers.single_mode_cavity` module provides a
+lightweight electromagnetic solver that replaces a full FDTD grid with a single
+damped harmonic oscillator. It evolves entirely in atomic units while
+supporting the same :class:`maxwelllink.Molecule` abstraction used by the Meep
+backend, making it well suited for rapid prototyping, regression tests, and
+workflows focused on one classical cavity mode.
 
-Core API
---------
+Requirements
+------------
 
-- :class:`maxwelllink.SingleModeSimulation` evolves the cavity field with the
-  equation described in the class docstring. The constructor accepts:
+- No additional dependencies beyond the MaxwellLink Python stack are required.
 
-  - ``dt_au`` – integration time step (must be positive).
-  - ``frequency_au`` and ``damping_au`` – oscillator frequency :math:`\omega_0`
-    and damping :math:`\kappa` in atomic units.
-  - ``molecules`` – iterable of :class:`maxwelllink.Molecule` objects in either
-    socket or embedded mode.
-  - ``drive`` – constant float or callable returning the external drive term.
-  - ``coupling_strength`` and ``coupling_axis`` – control how molecular dipoles
-    feed back into the cavity. Axes accept ``0/1/2`` or ``"x"/"y"/"z"``.
-  - ``record_history`` – when ``True`` stores time, field, velocity, drive, and
-    molecular response traces on ``*.history`` attributes.
+Usage
+-----
 
-- :class:`maxwelllink.em_solvers.single_mode_cavity.MoleculeSingleModeWrapper`
-  normalizes each molecule, refreshes its time units, and keeps an
-  ``additional_data_history`` in sync with the cavity clock.
+Socket mode
+^^^^^^^^^^^
 
-Socket integration
-------------------
+.. code-block:: python
 
-Socket-backed molecules must all share the same
-:class:`maxwelllink.SocketHub`. Before each step the simulation calls
-:meth:`maxwelllink.SocketHub.wait_until_bound` until every driver is connected.
-Per-step payloads include the instantaneous electric field (aligned with the
-selected axis) and accept JSON diagnostics via the driver's ``extra`` field.
-See ``tests/test_tls/test_meep_2d_socket_tls1_relaxation.py`` for the same
-socket handshake pattern used with Meep.
+   import maxwelllink as mxl
 
-Embedded molecules
-------------------
+   hub = mxl.SocketHub(host="127.0.0.1", port=31415, timeout=10.0, latency=1e-5)
+   molecule = mxl.Molecule(hub=hub)
 
-When ``mode="non-socket"``, MaxwellLink initializes the driver once via
-:meth:`~maxwelllink.em_solvers.single_mode_cavity.MoleculeSingleModeWrapper.initialize_driver`.
-Each step then calls :meth:`~maxwelllink.Molecule.propagate`,
-collects the source amplitude with
-:meth:`~maxwelllink.Molecule.calc_amp_vector`, and appends any diagnostics
-exposed by the driver.
+   sim = mxl.SingleModeSimulation(
+       dt_au=0.5,
+       frequency_au=0.242,
+       damping_au=0.0,
+       molecules=[molecule],
+       coupling_strength=1e-4,
+       qc_initial=1e-5,
+       hub=hub,
+       record_history=True,
+   )
 
-Example
--------
+   sim.run(steps=4000)
+
+Launch :command:`mxl_driver --model tls --port 31415 ...` (or another driver)
+after running this script.
+
+Non-socket mode
+^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -59,32 +51,83 @@ Example
 
    tls = mxl.Molecule(
        driver="tls",
-       driver_kwargs=dict(omega=0.242, mu12=187.0, orientation=2, pe_initial=1e-3),
+       driver_kwargs=dict(
+           omega=0.242,
+           mu12=187.0,
+           orientation=2,
+           pe_initial=1e-4,
+       ),
    )
 
    sim = mxl.SingleModeSimulation(
-       dt_au=0.05,
+       dt_au=0.5,
        frequency_au=0.242,
-       damping_au=1e-3,
+       damping_au=0.0,
        molecules=[tls],
-       drive=0.0,
-       coupling_strength=1.0,
+       coupling_strength=1e-4,
+       qc_initial=1e-5,
        record_history=True,
    )
 
-   sim.run(steps=500)
-   print(sim.field_history[-1], tls.additional_data_history[-1]["Pe"])
+   sim.run(steps=4000)
 
-The example mirrors the snippet in ``docs/source/usage.rst`` and the notebook
-``tutorials/notebook/single_mode_tls.ipynb``. History arrays let you compute
-observables such as the excited-state population without re-running the driver.
+Parameters
+----------
 
-Additional notes
-----------------
+.. list-table::
+   :header-rows: 1
 
-- Both ``steps`` and ``until`` arguments are mutually exclusive when calling
-  :meth:`~maxwelllink.SingleModeSimulation.run`.
-- ``drive`` may be any callable taking the current time (a.u.) and returning a
-  float. A constant value keeps the cavity coherently driven.
-- Setting ``record_history=False`` skips all list allocations for minimal
-  overhead when only the final field value is required.
+   * - Name
+     - Description
+   * - ``dt_au``
+     - Integration time step in atomic units. Must be positive.
+   * - ``frequency_au``
+     - Cavity angular frequency :math:`\omega_c` (a.u.).
+   * - ``damping_au``
+     - Linear damping coefficient :math:`\kappa` applied to the cavity momentum (a.u.).
+   * - ``molecules``
+     - Iterable of :class:`~maxwelllink.Molecule` instances. Socket and non-socket
+       molecules can be mixed in the same simulation.
+   * - ``drive``
+     - Constant float or callable ``drive(time_au)`` returning the external drive term.
+       Defaults to ``0.0``.
+   * - ``coupling_strength``
+     - Scalar prefactor :math:`g` for the molecular polarization feedback. Default: ``1.0``.
+   * - ``coupling_axis``
+     - Field component coupled to the molecules: ``0/1/2`` or ``"x"/"y"/"z"``. Default: ``2`` (``z``).
+   * - ``hub``
+     - Optional :class:`~maxwelllink.SocketHub` shared by all socket-mode molecules.
+       The simulation infers the hub from the first socket molecule when omitted.
+   * - ``qc_initial``
+     - Initial cavity coordinate :math:`q_c(0)` (a.u.). Default: ``0.0``.
+   * - ``pc_initial``
+     - Initial cavity momentum :math:`\dot{q}_c(0)` (a.u.). Default: ``0.0``.
+   * - ``record_history``
+     - When ``True`` store histories for time, field, momentum, drive, and net molecular response.
+       Default: ``True``.
+
+Returned data
+-------------
+
+Calling :class:`~maxwelllink.SingleModeSimulation` with ``record_history=True``
+populates:
+
+- :attr:`SingleModeSimulation.time_history` – time stamps in atomic units.
+- :attr:`SingleModeSimulation.qc_history` – cavity coordinate :math:`q_c(t)`.
+- :attr:`SingleModeSimulation.pc_history` – cavity momentum :math:`\dot{q}_c(t)`.
+- :attr:`SingleModeSimulation.drive_history` – external drive values.
+- :attr:`SingleModeSimulation.molecule_response_history` – summed molecular response along ``coupling_axis``.
+
+Each :class:`~maxwelllink.Molecule` keeps
+:attr:`~maxwelllink.Molecule.additional_data_history`, which records driver
+diagnostics (e.g., TLS populations, energies, timestamps). Socket drivers may
+append extra JSON payloads through the hub; embedded drivers populate the same
+history via :meth:`maxwelllink.Molecule.append_additional_data`.
+
+Notes
+-----
+
+- Provide either ``steps`` or ``until`` to :meth:`SingleModeSimulation.run`, not both.
+- Socket-mode molecules must all bind to the same :class:`~maxwelllink.SocketHub`;
+  the simulation waits until every driver acknowledges initialization.
+- Setting ``record_history=False`` avoids list allocations for throughput-critical runs.

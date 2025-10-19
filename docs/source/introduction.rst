@@ -68,7 +68,9 @@ Learning path
    MaxwellLink with different EM solvers and drivers.
 5. :doc:`architecture` explains the socket protocol, molecular wrappers, and how
    MaxwellLink keeps the EM solver and drivers synchronized.
-6. :doc:`drivers/index` documents all shipped molecular drivers, their required
+6. :doc:`em_solvers/index` documents all shipped EM solvers, their required
    parameters, and expected outputs.
-7. :doc:`api/maxwelllink` lists the complete API reference for all
+7. :doc:`drivers/index` documents all shipped molecular drivers, their required
+   parameters, and expected outputs.
+8. :doc:`api/maxwelllink` lists the complete API reference for all
    MaxwellLink classes and functions.

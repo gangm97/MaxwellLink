@@ -2,43 +2,26 @@ Meep FDTD Solver
 ================
 
 The :mod:`maxwelllink.em_solvers.meep` backend couples MaxwellLink molecules to
-`Meep <https://meep.readthedocs.io/>`_ (``pymeep``) simulations. It converts
-between Meep's native unit system and atomic units, injects molecular sources
-into the grid, and streams regularized field integrals back to the quantum
-drivers.
+`Meep <https://meep.readthedocs.io/>`_ (``pymeep``) simulations. It wraps
+:class:`meep.Simulation`, converts between Meep units and atomic units, creates
+regularized polarization sources, and shuttles electric-field integrals and
+driver responses each time step.
 
-Overview
---------
+Requirements
+------------
 
-- :class:`maxwelllink.MeepSimulation` subclasses :class:`meep.Simulation` and
-  automatically inserts the MaxwellLink coupling step. It enforces
-  ``Courant = 0.5`` and rescales each molecule to the chosen
-  ``time_units_fs`` (default ``0.1`` fs).
-- :class:`maxwelllink.em_solvers.meep.MoleculeMeepWrapper` builds Meep
-  ``CustomSource`` objects for the molecule's polarization kernel and caches
-  them so identical kernels share sources.
-- :class:`maxwelllink.em_solvers.meep.MeepUnits` handles conversions such as
-  :meth:`~maxwelllink.em_solvers.meep.MeepUnits.efield_em_to_au` and
-  :meth:`~maxwelllink.em_solvers.meep.MeepUnits.source_amp_au_to_em`, and emits a
-  units summary via :meth:`~maxwelllink.em_solvers.meep.MeepUnits.units_helper`.
-- Two step functions expose the coupling logic directly:
-  :func:`maxwelllink.update_molecules` (socket + MPI aware) and
-  :func:`maxwelllink.update_molecules_no_socket` (embedded drivers only).
-
-Prerequisites
--------------
-
-- ``pymeep`` (imported as ``meep``) must be installed; import failures raise a
+- `pymeep` (imported as :mod:`meep`) must be installed. Import failures raise a
   clear :class:`ImportError`.
-- Optional ``mpi4py`` support is detected at runtime. When present, only Meep's
-  master rank talks to the molecular drivers while amplitudes and field
-  integrals are broadcast across ranks.
-- Socket workflows require a :class:`maxwelllink.SocketHub` and external driver
-  processes such as ``mxl_driver.py``. End-to-end examples live in
-  ``tests/test_tls/test_meep_2d_socket_tls1_relaxation.py`` and related files.
+- Optional `mpi4py` support is detected automatically. When present, only the
+  Meep master rank communicates with the molecular drivers while amplitudes are
+  broadcast to worker ranks.
 
-Typical socket workflow
------------------------
+
+Usage
+-----
+
+Socket mode
+^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -48,11 +31,9 @@ Typical socket workflow
 
    host, port = mxs.get_available_host_port()
    hub = mxl.SocketHub(host=host, port=port, timeout=10.0, latency=1e-5)
-   print(f"SocketHub listening on {host}:{port}")
 
    molecule = mxl.Molecule(
        hub=hub,
-       resolution=10,
        center=mp.Vector3(0, 0, 0),
        size=mp.Vector3(1, 1, 1),
        sigma=0.1,
@@ -60,56 +41,93 @@ Typical socket workflow
    )
 
    sim = mxl.MeepSimulation(
+       hub=hub,
+       molecules=[molecule],
+       time_units_fs=0.1,
        cell_size=mp.Vector3(8, 8, 0),
        geometry=[],
        sources=[],
        boundary_layers=[mp.PML(3.0)],
        resolution=10,
-       hub=hub,
-       molecules=[molecule],
-       time_units_fs=0.1,
    )
 
-   # launch the molecular driver separately (see tests for subprocess helpers)
+   # Launch the driver separately (e.g. mxl_driver --model tls --port <port> ...)
    sim.run(until=90)
 
-At runtime the coupling step sends regularized field integrals (Meep units) to
-the driver, receives source amplitudes in atomic units, converts them back to
-Meep units, and accumulates them inside the shared ``CustomSource`` objects. The
-driver's diagnostic payloads (``extra`` JSON blobs) are appended to
-``molecule.additional_data_history``.
+Non-socket mode
+^^^^^^^^^^^^^^^
 
-.. note::
-   Legacy scripts (see ``tests/test_tls/test_meep_2d_socket_tls1_relaxation.py``)
-   still use :class:`maxwelllink.SocketMolecule` in conjunction with
-   :func:`maxwelllink.update_molecules`. Both interfaces remain supported; the
-   :class:`maxwelllink.Molecule` + :class:`maxwelllink.MeepSimulation` path shown
-   above removes the need to wire the coupling loop manually.
+.. code-block:: python
 
-Embedded / non-socket molecules
--------------------------------
+   import meep as mp
+   import maxwelllink as mxl
 
-When molecules are embedded (``mode="non-socket"``), wrap them with
-:class:`~maxwelllink.em_solvers.meep.MoleculeMeepWrapper` and pass them to
-:func:`~maxwelllink.update_molecules_no_socket`. MaxwellLink initializes each
-driver once via :meth:`~maxwelllink.em_solvers.meep.MoleculeMeepWrapper.initialize_driver`
-and reuses the cached polarization sources on subsequent runs.
+   molecule = mxl.Molecule(
+       driver="tls",
+       driver_kwargs=dict(
+           omega=0.242,
+           mu12=187.0,
+           orientation=2,
+           pe_initial=1e-4,
+       ),
+       center=mp.Vector3(),
+       size=mp.Vector3(1, 1, 1),
+       sigma=0.1,
+       dimensions=2,
+   )
 
-MPI considerations
-------------------
+   sim = mxl.MeepSimulation(
+       molecules=[molecule],
+       time_units_fs=0.1,
+       cell_size=mp.Vector3(8, 8, 0),
+       geometry=[],
+       sources=[],
+       boundary_layers=[mp.PML(3.0)],
+       resolution=10,
+   )
 
-:func:`~maxwelllink.update_molecules` detects ``mpi4py`` automatically. It keeps
-the socket exchange on rank 0 (and Meep's master), broadcasts amplitudes to all
-ranks, and pauses cleanly if a driver disconnects until
-:meth:`maxwelllink.SocketHub.wait_until_bound` confirms reconnection. This logic
-matches the regression tests under ``tests/test_tls/test_meep_*``.
+   sim.run(until=90)
 
-Further reading
----------------
+MaxwellLink inserts the appropriate coupling step automatically: sockets when
+``hub`` is provided, or embedded drivers otherwise.
 
-- :doc:`tutorials/index` summarises the available notebooks and how they map to
-  automated regression tests.
-- :doc:`tutorials/notebook/socket_tls_workflow` demonstrates the end-to-end TLS
-  socket workflow with executable cells.
-- :doc:`tutorials/notebook/rttddft_hcn` couples the same Meep setup to the
-  Psi4-based RT-TDDFT driver.
+Parameters
+----------
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - Description
+   * - ``hub``
+     - Optional :class:`~maxwelllink.SocketHub`. Required for socket-connected molecules; ignored for embedded drivers.
+   * - ``molecules``
+     - Iterable of :class:`~maxwelllink.Molecule` instances. They are wrapped into :class:`~maxwelllink.em_solvers.meep.MoleculeMeepWrapper` and may mix socket and non-socket modes.
+   * - ``time_units_fs``
+     - Meep time unit expressed in femtoseconds (default ``0.1``). Used to refresh molecular time steps and unit conversions.
+   * - ``geometry``
+     - Sequence of Meep geometry objects forwarded to :class:`meep.Simulation`.
+   * - ``sources``
+     - List of native Meep sources. Molecular sources are added automatically; this list is for additional excitations.
+   * - ``cell_size``
+     - Simulation domain size passed to :class:`meep.Simulation`.
+   * - ``boundary_layers``
+     - List of boundary conditions (for example ``[mp.PML(thickness)]``).
+   * - ``resolution``
+     - Spatial resolution (pixels per distance unit). Used to derive ``dx`` and enforce ``Courant = 0.5``.
+   * - ``**kwargs``
+     - Remaining keyword arguments are forwarded verbatim to :class:`meep.Simulation` (e.g. ``default_material``, ``k_point``, ``symmetries``).
+
+Returned data
+-------------
+
+- ``sim.molecules`` – list of :class:`MoleculeMeepWrapper` instances. Each wrapper exposes the underlying :class:`~maxwelllink.Molecule`.
+- ``molecule.additional_data_history`` – diagnostics produced by the driver (time stamps, populations, energies, custom JSON payloads).
+- Standard Meep data channels remain available (e.g. ``sim.fields``, flux regions, near-to-far field monitors).
+- For debugging, ``maxwelllink.em_solvers.meep.instantaneous_source_amplitudes`` stores the most recent source amplitudes per polarization fingerprint.
+
+Notes
+-----
+
+- :class:`MeepSimulation` enforces ``Courant = 0.5``. Provide ``resolution`` and other grid parameters accordingly.
+- MPI runs automatically confine socket communication to rank 0 while broadcasting amplitudes to all ranks; disconnections pause the solver until the hub reports reconnection.

@@ -116,7 +116,19 @@ class SingleModeSimulation(DummyEMSimulation):
     .. math::
 
        \dot{q} = p, \qquad
-       \dot{p} = -\omega_c^{2}\, q \;+\; g \sum_i \frac{d\mu_i}{dt} \;-\; \gamma_c\, p \;+\; D(t),
+       \dot{p} = -\omega_c^{2}\, q \;+\; g \sum_i \frac{d\mu_i}{dt} \;-\; \gamma_c\, p \;+\; D(t), \qquad
+
+    aka,
+
+    .. math::
+
+        \ddot{q} = -\omega_c^{2}\, q \;+\; g \sum_i \frac{d\mu_i}{dt} \;-\; \gamma_c\, p \;+\; D(t),
+
+    where the effective electric field of this cavity mode is
+
+    .. math::
+
+       E(t) = - g p(t),
 
     where :math:`g` is ``coupling_strength`` and the sum runs over the selected
     molecular axis of all molecules. All quantities are in atomic units.
@@ -268,21 +280,13 @@ class SingleModeSimulation(DummyEMSimulation):
             drive_val + self.coupling_strength * amp_sum - (self.frequency**2) * qc
         )
         return acceleration
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-    def step(self):
-        """
-        Advance the simulation by one time step.
-        """
-
-        # 1. velocity-verlet part 1: qc update from t to t + dt
-        self.qc += self.dt * self.pc + 0.5 * self.dt**2 * self.acceleration
-
-        # 2. propagate molecules to t + dt
-        efield_vec = np.array([0.0, 0.0, self.qc], dtype=float)
-
+    
+    def _calc_effective_efield(self, pc: float):
+        efield_vec = np.array([0.0, 0.0, 0.0], dtype=float)
+        efield_vec[self.axis] = -self.coupling_strength * pc
+        return efield_vec
+    
+    def _step_molecules(self, efield_vec: Sequence[float], time_au: float):
         # Non-socket molecules
         for wrapper in self.non_socket_wrappers:
             wrapper.propagate(efield_vec)
@@ -311,20 +315,33 @@ class SingleModeSimulation(DummyEMSimulation):
                         pass
 
         amp_sum = sum(wrapper.last_amp[self.axis] for wrapper in self.wrappers)
+        return amp_sum
 
-        # 3. velocity-verlet part 2: calculate acceleration at t + dt
-        acceleration_next = self._calc_acceleration(
-            self.time + self.dt, amp_sum, self.qc
-        )
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def step(self):
+        """
+        Advance the simulation by one time step.
+        """
 
-        # 4. velocity-verlet part 3: pc update from t to t + dt
-        self.pc += 0.5 * self.dt * (self.acceleration + acceleration_next)
-        # 4.1 apply damping to the velocity using the exponential decay formula
+        pc_half = self.pc + 0.5 * self.dt * self.acceleration
+
+        efield_vec = self._calc_effective_efield(pc_half)
+
+        amp_sum = self._step_molecules(efield_vec, self.time)
+
+        self.qc += self.dt * pc_half
+
+        acceleration = self._calc_acceleration(self.time + self.dt, amp_sum, self.qc)
+
+        self.pc = pc_half + 0.5 * self.dt * acceleration
+
         self.pc *= np.exp(-self.damping * self.dt)
 
         # 5. update acceleration and time
         self.time += self.dt
-        self.acceleration = acceleration_next
+        self.acceleration = acceleration
 
         if self.record_history:
             self.time_history.append(self.time)
