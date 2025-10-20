@@ -17,6 +17,35 @@ dependencies = [
   "cmake>=3.18",
   "requests>=2.31"
 ]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Scientific/Engineering :: Chemistry",
+]
+keywords = [
+  "electromagnetics",
+  "molecular-dynamics",
+  "quantum-simulation",
+  "socket-interface",
+  "light-matter",
+  "polariton"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/TaoELi/MaxwellLink"
+"Documentation" = "https://taoeli.github.io/MaxwellLink"
+"Source" = "https://github.com/TaoELi/MaxwellLink"
+"Issues" = "https://github.com/TaoELi/MaxwellLink/issues"
 
 # `mxl_driver.py` and other scripts available on PATH
 [project.scripts]
@@ -28,6 +57,7 @@ dependencies = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
