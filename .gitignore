@@ -220,6 +220,7 @@ tests/raw_tests/
 
 #doc
 docs/source/api
+examples_legacy
 
 # under development
 src/maxwelllink/mxl_drivers/python/models/*.npz
