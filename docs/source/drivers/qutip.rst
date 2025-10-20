@@ -1,10 +1,26 @@
 QuTiP driver
 ============
 
-The QuTiP driver embeds MaxwellLink in the rich modelling ecosystem provided by
+The QuTiP driver embeds **MaxwellLink** in the rich modelling ecosystem provided by
 `QuTiP <https://qutip.org/>`_. It can run preset TLS models or load user-defined
 Hamiltonians, collapse operators, and initial states from an external Python
 module. This Python driver is implemented in :class:`maxwelllink.mxl_drivers.python.models.QuTiPModel`.
+
+.. note::
+
+  The QuTiP driver advances the density matrix according to
+
+  .. math::
+
+     \frac{d}{dt}\hat{\rho}(t) = -\frac{i}{\hbar}\left[\hat{H} - \widetilde{\mathbf{E}}(t)\cdot \hat{\boldsymbol{\mu}}, \hat{\rho}(t)\right] - \mathcal{L}\bigl[\hat{\rho}(t)\bigr],
+
+  where the Hamiltonian, dipole operators, and optional Lindblad super-operators are supplied by the user. The emitted dipole current is returned via
+
+  .. math::
+
+     \frac{d}{dt}\langle \hat{\boldsymbol{\mu}} \rangle = \mathrm{Tr}\!\left(\frac{d}{dt}\hat{\rho}(t)\,\hat{\boldsymbol{\mu}}\right),
+
+  providing a consistent source term for Maxwell's equations.
 
 Requirements
 ------------

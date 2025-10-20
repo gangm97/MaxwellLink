@@ -1,15 +1,15 @@
 Installation
 ============
 
-The recommended way to install MaxwellLink is through a conda environment that
-provides Meep (with MPI support) alongside Python 3.9+.
+The recommended way to install **MaxwellLink** is through a conda environment that
+provides third-party EM solvers and molecular drivers alongside Python 3.9+.
 
 Prerequisites
 -------------
 
-- A recent Python (``>=3.9``). MaxwellLink is tested with CPython.
+- A recent Python (``>=3.9``). **MaxwellLink** is tested with CPython.
 - A working MPI stack (e.g. MPICH or OpenMPI) whenever you plan to run Meep or
-  MaxwellLink under ``mpirun``.
+  **MaxwellLink** under ``mpirun``.
 - C/Fortran toolchains supplied by your platform if you plan to build drivers
   such as LAMMPS from source.
 
@@ -23,7 +23,7 @@ Create a conda environment
    conda create -n "$CONDA_ENV" python=3.13
    conda activate "$CONDA_ENV"
 
-Install MaxwellLink from source
+Install **MaxwellLink** from source
 -------------------------------
 
 .. code-block:: bash
@@ -38,9 +38,9 @@ point used to launch molecular drivers.
 Optional EM solvers
 -----------------------
 
-Currently, MaxwellLink ships with Meep and a simple single-mode cavity solver. While the built-in
-single-mode cavity is mainly for prototyping and debugging, Meep is a full-featured FDTD package
-suitable for production simulations. One can install Meep with MPI support via conda:
+Currently, **MaxwellLink** ships with `Meep <https://meep.readthedocs.io/en/latest/>`_ and a simple single-mode cavity solver. While the built-in
+single-mode cavity is mainly for prototyping and debugging, `Meep <https://meep.readthedocs.io/en/latest/>`_ is a full-featured FDTD package
+suitable for production simulations. One can install `Meep <https://meep.readthedocs.io/en/latest/>`_ with MPI support via conda:
 
 .. code-block:: bash
 
@@ -49,8 +49,8 @@ suitable for production simulations. One can install Meep with MPI support via c
 Optional driver dependencies
 ----------------------------
 
-A two-level system (TLS) model ships with MaxwellLink and does not require extra packages.
-Beyond this lightweight driver, MaxwellLink supports several molecular drivers that depend on
+A two-level system (TLS) model ships with **MaxwellLink** and does not require extra packages.
+Beyond this lightweight driver, **MaxwellLink** supports several molecular drivers that depend on
 third-party packages. Install any molecular drivers below that you want to use from the command line. Each molecular driver can
 be pulled into the same conda environment.
 
@@ -68,9 +68,9 @@ be pulled into the same conda environment.
    # LAMMPS driver with fix mxl (installs a custom binary lmp_mxl)
    mxl_install_lammps
 
-The LAMMPS helper downloads, patches, and builds a LAMMPS executable that contains
+The `LAMMPS <https://www.lammps.org/>`_ helper downloads, patches, and builds a `LAMMPS <https://www.lammps.org/>`_ executable that contains
 ``fix mxl``; alternatively copy the provided ``fix_maxwelllink.*`` sources into
-your existing LAMMPS build and recompile.
+your existing `LAMMPS <https://www.lammps.org/>`_ build and recompile.
 
 Verify the installation
 -----------------------

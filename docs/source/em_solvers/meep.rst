@@ -1,11 +1,35 @@
 Meep FDTD Solver
 ================
 
-The :mod:`maxwelllink.em_solvers.meep` backend couples MaxwellLink molecules to
+The :mod:`maxwelllink.em_solvers.meep` backend couples **MaxwellLink** molecules to
 `Meep <https://meep.readthedocs.io/>`_ (``pymeep``) simulations. It wraps
-:class:`meep.Simulation`, converts between Meep units and atomic units, creates
+`meep.Simulation <https://meep.readthedocs.io/en/master/Python_User_Interface/#simulation>`_, converts between Meep units and atomic units, creates
 regularized polarization sources, and shuttles electric-field integrals and
 driver responses each time step.
+
+.. note::
+
+  The Meep backend advances the classical Maxwell equations
+
+  .. math::
+
+     \partial_t \mathbf{D}(\mathbf{r}, t) = \nabla \times \mathbf{H}(\mathbf{r}, t) - \mathbf{J}_{\mathrm{mol}}(\mathbf{r}, t), \qquad
+     \partial_t \mathbf{B}(\mathbf{r}, t) = - \nabla \times \mathbf{E}(\mathbf{r}, t),
+
+  with constitutive relations :math:`\mathbf{D} = \varepsilon_0 \varepsilon^{\ast}_{\mathrm{r}}(\mathbf{r}, \omega)\, \mathbf{E}` and :math:`\mathbf{B} = \mu\, \mathbf{H}` (typically :math:`\mu = \mu_0`). Molecular sources enter through
+
+  .. math::
+
+     \mathbf{J}_{\mathrm{mol}}(\mathbf{r}, t) = \sum_{m} \partial_t \mathbf{P}_{\mathrm{mol}}^{m}(\mathbf{r}, t), \qquad
+     \mathbf{P}_{\mathrm{mol}}^{m}(\mathbf{r}, t) = \sum_{i=x,y,z} \gamma\, \mu_{m}^{i}(t)\, \boldsymbol{\kappa}_{m}^{i}(\mathbf{r}),
+
+  where each spatial kernel :math:`\boldsymbol{\kappa}_{m}^{i}` is normalized over the molecular volume :math:`\Omega_m`. The solver supplies every coupled molecule with the regularized electric field
+
+  .. math::
+
+     \widetilde{E}_{m}^{i}(t) = \int_{\Omega_m} d\mathbf{r}\, \mathbf{E}(\mathbf{r}, t) \cdot \boldsymbol{\kappa}_{m}^{i}(\mathbf{r}),
+
+  and expects the returned dipole time derivative :math:`d\mu_{m}^{i}/dt` to reconstruct :math:`\mathbf{J}_{\mathrm{mol}}` self-consistently on the FDTD grid.
 
 Requirements
 ------------
@@ -88,7 +112,7 @@ Non-socket mode
 
    sim.run(until=90)
 
-MaxwellLink inserts the appropriate coupling step automatically: sockets when
+**MaxwellLink** inserts the appropriate coupling step automatically: sockets when
 ``hub`` is provided, or embedded drivers otherwise.
 
 Parameters

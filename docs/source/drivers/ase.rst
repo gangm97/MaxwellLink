@@ -1,16 +1,23 @@
 ASE driver
 ==========
 
-The ASE driver embeds MaxwellLink in the `Atomic Simulation Environment
+The ASE driver embeds **MaxwellLink** in the `Atomic Simulation Environment
 <https://wiki.fysik.dtu.dk/ase/>`_, enabling Born–Oppenheimer molecular dynamics
 with any ASE-compatible calculator. The implementation is provided by
 :class:`maxwelllink.mxl_drivers.python.models.ASEModel`.
 
+.. note::
+  During the simulation, the ASE driver receives the electric field,
+  applies :math:`\mathbf{F}_i = Q_i \widetilde{\mathbf{E}}`, and returns
+  :math:`\mathrm{d}\boldsymbol{\mu}/\mathrm{d}t = \sum_i Q_i \mathbf{v}_i`, where
+  :math:`Q_i` and :math:`\mathbf{v}_i` are the partial charge (defined in ``charges`` in :ref:`Parameters`) and velocity of atom
+  :math:`i`.
+
 Requirements
 ------------
 
-- ``ase`` (install via ``conda install -c conda-forge ase``).
-- The desired calculator backends (Psi4, ORCA, DFTB+, …) must be installed and
+- ``ase`` (install via ``conda install -c conda-forge ase``) for the `Atomic Simulation Environment <https://wiki.fysik.dtu.dk/ase/>`_.
+- The desired calculator backends (`Psi4 <https://psicode.org/>`_, `ORCA <https://www.faccts.de/orca/>`_, `DFTB+ <https://www.dftbplus.org/>`_, …) must be installed and
   discoverable by ASE.
 
 Usage
@@ -70,7 +77,7 @@ Parameters
      - When ``True`` the driver queries the wrapped calculator for charges at
        every step instead of using ``charges``. Default: ``False``.
    * - ``n_substeps``
-     - Number of velocity-Verlet steps per MaxwellLink time step. Default: ``1``.
+     - Number of velocity-Verlet steps per **MaxwellLink** time step. Default: ``1``.
    * - ``temperature_K``
      - Initial temperature passed to ``MaxwellBoltzmannDistribution`` before
        propagation. Default: ``0.0``.
@@ -83,6 +90,8 @@ Parameters
    * - ``restart``
      - When ``True`` try to restore the most recent checkpoint on start-up.
        Default: ``False``.
+
+
 
 Returned data
 -------------

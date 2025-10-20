@@ -1,16 +1,24 @@
 LAMMPS driver
 =============
 
-MaxwellLink ships a C++ ``fix mxl`` for LAMMPS so classical molecular dynamics
+**MaxwellLink** ships a C++ ``fix mxl`` for `LAMMPS <https://www.lammps.org/>`_ so classical molecular dynamics
 jobs can exchange electric fields and dipole currents with the EM solver. The
 sources live in :mod:`maxwelllink.mxl_drivers.lammps` alongside a convenience
 installer.
+
+.. note::
+
+  During the run the ``fix mxl`` connects to the ``SocketHub``, receives the electric field,
+  applies :math:`\mathbf{F}_i = q_i \widetilde{\mathbf{E}}`, and returns
+  :math:`\mathrm{d}\boldsymbol{\mu}/\mathrm{d}t = \sum_i q_i \mathbf{v}_i`, where 
+  :math:`q_i` and :math:`\mathbf{v}_i` are the partial charge and velocity of atom :math:`i`.
+  LAMMPS halts automatically if the hub closes the connection.
 
 Requirements
 ------------
 
 - POSIX-like environment (the fix uses BSD sockets).
-- A LAMMPS build with atom IDs enabled and non-LJ units (such as ``units real`` or
+- A `LAMMPS <https://www.lammps.org/>`_ build with atom IDs enabled and non-LJ units (such as ``units real`` or
   ``metal``).
 
 Usage
@@ -19,7 +27,7 @@ Usage
 Socket preparation
 ^^^^^^^^^^^^^^^^^^
 
-On the MaxwellLink side create a socket hub, for example in Meep:
+On the **MaxwellLink** side create a socket hub, for example in `Meep <https://meep.readthedocs.io/en/latest/>`_:
 
 .. code-block:: python
 
@@ -28,13 +36,13 @@ On the MaxwellLink side create a socket hub, for example in Meep:
 LAMMPS build helper
 ^^^^^^^^^^^^^^^^^^^
 
-Use the bundled script to build a LAMMPS executable that contains the fix:
+Use the bundled script to build a `LAMMPS <https://www.lammps.org/>`_ executable that contains the fix:
 
 .. code-block:: bash
 
    mxl_install_lammps
 
-The script clones LAMMPS, copies ``fix_maxwelllink.cpp``/``.h`` into ``src/MISC``,
+The script clones `LAMMPS <https://www.lammps.org/>`_, copies ``fix_maxwelllink.cpp``/``.h`` into ``src/MISC``,
 and compiles an ``lmp_mxl`` binary placed on ``PATH``. Advanced users may copy
 the fix into an existing source tree and rebuild manually.
 
@@ -47,11 +55,6 @@ Add the fix to the group of atoms to be coupled:
 
    fix 1 all mxl localhost 31415
 
-During the run the fix connects to the socket hub, receives the electric field,
-applies :math:`\mathbf{F}_i = q_i \mathbf{E}`, and returns
-:math:`\mathrm{d}\boldsymbol{\mu}/\mathrm{d}t = \sum_i q_i \mathbf{v}_i`.
-LAMMPS halts automatically if the hub closes the connection.
-
 
 Parameters
 ----------
@@ -62,7 +65,7 @@ Parameters
    * - Name
      - Description
    * - ``host``
-     - Hostname or IP address of the MaxwellLink process (third argument in the
+     - Hostname or IP address of the **MaxwellLink** process (third argument in the
        ``fix`` command). Required.
    * - ``port``
      - TCP port exposed by :class:`maxwelllink.SocketHub`. Must lie in ``(1024,

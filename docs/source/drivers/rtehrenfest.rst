@@ -8,10 +8,33 @@ computes electronic dynamics with RT-TDDFT while integrating nuclear motion unde
 mean-field electronic potential energy surfaces. This Python driver couples to
 EM solvers in both electronic and nuclear degrees of freedom.
 
+.. note::
+
+  Electronic propagation follows the RT-TDDFT equation of motion
+
+  .. math::
+
+     \frac{d}{dt} \mathbf{P}^{\mathrm{e}}_{\mathrm{o}}(t) = -\frac{i}{\hbar}\Bigl[\mathbf{F}^{\mathrm{e}}_{\mathrm{o}}(t) - \widetilde{\mathbf{E}}(t)\cdot \vec{\boldsymbol{\mu}}^{\mathrm{e}}_{\mathrm{o}},\, \mathbf{P}^{\mathrm{e}}_{\mathrm{o}}(t)\Bigr],
+
+  while the nuclei are propagated through
+
+  .. math::
+
+     M_n \ddot{\mathbf{R}}_n = -\nabla_{\mathbf{R}_n} E_{\mathrm{mf}}(\{\mathbf{R}_m\}, t) + Z_n \widetilde{\mathbf{E}}(t),
+
+  where :math:`E_{\mathrm{mf}}` denotes the Ehrenfest mean-field or Born--Oppenheimer potential specified by ``force_type``, and :math:`Z_n` is the nuclear 
+  charge of atom :math:`n`. The emitted dipole current combines both nuclear and electronic contributions,
+
+  .. math::
+
+     \dot{\boldsymbol{\mu}} = \sum_n Z_n \mathbf{v}_n + \mathrm{Tr}\!\left(\frac{d}{dt}\mathbf{P}^{\mathrm{e}}(t)\,\vec{\boldsymbol{\mu}}^{\mathrm{e}}\right),
+
+  and is sent back to the Maxwell solver each time step.
+
 Requirements
 ------------
 
-- ``psi4`` available in the driver environment.
+- ``psi4`` available in the driver environment (`Psi4 <https://psicode.org/>`_ with Python bindings).
 - Same structure requirements as the RT-TDDFT driver (XYZ file with charge and
   multiplicity on the second line).
 
@@ -64,9 +87,9 @@ Parameters
      - Path to the geometry file (charge/multiplicity on the second line).
        Required.
    * - ``functional``
-     - Psi4 functional label. Default: ``SCF``.
+     - `Psi4 <https://psicode.org/>`_ functional label. Default: ``SCF``.
    * - ``basis``
-     - Psi4 basis set label. Default: ``sto-3g``.
+     - `Psi4 <https://psicode.org/>`_ basis set label. Default: ``sto-3g``.
    * - ``dt_rttddft_au``
      - Electronic time step in atomic units. Default: ``0.04``.
    * - ``delta_kick_au``
@@ -75,9 +98,9 @@ Parameters
      - Axes for the delta-kick (``x``, ``y``, ``z``, ``xy``, ``xz``, ``yz``,
        ``xyz``). Default: ``xyz``.
    * - ``memory``
-     - Psi4 memory allocation string. Default: ``8GB``.
+     - `Psi4 <https://psicode.org/>`_ memory allocation string. Default: ``8GB``.
    * - ``num_threads``
-     - CPU threads assigned to Psi4. Default: ``1``.
+     - CPU threads assigned to `Psi4 <https://psicode.org/>`_. Default: ``1``.
    * - ``electron_propagation``
      - Electronic propagator: ``etrs`` or ``pc``. Default: ``etrs``.
    * - ``threshold_pc``
@@ -87,9 +110,9 @@ Parameters
      - When ``True`` subtract the permanent dipole from the coupling term.
        Default: ``False``.
    * - ``dft_grid_name``
-     - Psi4 quadrature grid label. Default: ``SG0``.
+     - `Psi4 <https://psicode.org/>`_ quadrature grid label. Default: ``SG0``.
    * - ``dft_radial_points`` / ``dft_spherical_points``
-     - Grid sizes (negative values fall back to Psi4 defaults). Defaults:
+     - Grid sizes (negative values fall back to `Psi4 <https://psicode.org/>`_ defaults). Defaults:
        ``-1``.
    * - ``force_type``
      - ``ehrenfest`` for mean-field forces or ``bo`` for Born–Oppenheimer
@@ -142,7 +165,7 @@ Notes
 -----
 
 - The driver combines electronic and nuclear contributions when returning
-  :math:`\mathrm{d}\boldsymbol{\mu}/\mathrm{d}t` to MaxwellLink.
+  :math:`\mathrm{d}\boldsymbol{\mu}/\mathrm{d}t` to **MaxwellLink**.
 - Regression test
   ``tests/test_ase/test_ase_psi4_bomd.py`` benchmarks both ``force_type="bo"``
-  and ``force_type="ehrenfest"`` against ASE/Psi4 BOMD runs.
+  and ``force_type="ehrenfest"`` against `ASE <https://wiki.fysik.dtu.dk/ase/>`_/`Psi4 <https://psicode.org/>`_ BOMD runs.

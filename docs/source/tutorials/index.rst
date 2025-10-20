@@ -1,7 +1,7 @@
 Tutorials
 =========
 
-MaxwellLink's official tutorials are Jupyter notebooks rendered through
+**MaxwellLink**'s official tutorials are Jupyter notebooks rendered through
 ``nbsphinx``. They cover various light-matter coupling scenarios using different
 EM solvers and molecular drivers.
 

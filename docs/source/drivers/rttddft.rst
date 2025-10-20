@@ -1,16 +1,32 @@
 RT-TDDFT driver
 ===============
 
-The RT-TDDFT driver couples MaxwellLink to the Psi4 quantum chemistry package
+The RT-TDDFT driver couples **MaxwellLink** to the `Psi4 <https://psicode.org/>`_ quantum chemistry package
 for real-time time-dependent density functional theory propagation. It is
 implemented by :class:`maxwelllink.mxl_drivers.python.models.RTTDDFTModel`,
 which supports delta-kick excitations, automatic sub-stepping, and optional
 checkpoint/restart workflows.
 
+.. note::
+
+  Electronic dynamics are propagated through
+
+  .. math::
+
+     \frac{d}{dt} \mathbf{P}^{\mathrm{e}}_{\mathrm{o}}(t) = -\frac{i}{\hbar}\Bigl[\mathbf{F}^{\mathrm{e}}_{\mathrm{o}}(t) - \widetilde{\mathbf{E}}(t)\cdot \vec{\boldsymbol{\mu}}^{\mathrm{e}}_{\mathrm{o}},\, \mathbf{P}^{\mathrm{e}}_{\mathrm{o}}(t)\Bigr],
+
+  where the Kohn--Sham matrix :math:`\mathbf{F}^{\mathrm{e}}(t)` is rebuilt self-consistently from the evolving density and transformed between orthogonal and non-orthogonal bases each step. After every integration the driver reports the dipole current through
+
+  .. math::
+
+     \frac{d}{dt}\langle \vec{\boldsymbol{\mu}}^{\mathrm{e}} \rangle = \mathrm{Tr}\!\left(\frac{d}{dt}\mathbf{P}^{\mathrm{e}}(t)\,\vec{\boldsymbol{\mu}}^{\mathrm{e}}\right),
+
+  providing the light--matter source term for the Maxwell solver. The nuclei are assumed fixed during the simulation.
+
 Requirements
 ------------
 
-- ``psi4`` available in the driver environment.
+- ``psi4`` available in the driver environment (`Psi4 <https://psicode.org/>`_ with Python bindings).
 - The molecular geometry provided via an XYZ file whose second line specifies
   charge and multiplicity (e.g. ``0 1``).
 
@@ -66,9 +82,9 @@ Parameters
      - Path to the geometry file. Relative paths are resolved on the driver
        side. Required.
    * - ``functional``
-     - Psi4 functional label (``SCF``, ``PBE0``, ``B3LYP`` …). Default: ``SCF``.
+     - `Psi4 <https://psicode.org/>`_ functional label (``SCF``, ``PBE0``, ``B3LYP`` …). Default: ``SCF``.
    * - ``basis``
-     - Psi4 basis set label (``sto-3g``, ``6-31g``, ``cc-pVDZ`` …). Default:
+     - `Psi4 <https://psicode.org/>`_ basis set label (``sto-3g``, ``6-31g``, ``cc-pVDZ`` …). Default:
        ``sto-3g``.
    * - ``dt_rttddft_au``
      - Electronic time step in atomic units. Sub-stepping is applied when this
@@ -80,9 +96,9 @@ Parameters
      - Axes for the delta-kick (``x``, ``y``, ``z``, ``xy``, ``xz``, ``yz``,
        ``xyz``). Default: ``xyz``.
    * - ``memory``
-     - Psi4 memory allocation string (e.g. ``8GB``). Default: ``8GB``.
+     - `Psi4 <https://psicode.org/>`_ memory allocation string (e.g. ``8GB``). Default: ``8GB``.
    * - ``num_threads``
-     - Number of threads assigned to Psi4. Default: ``1``.
+     - Number of threads assigned to `Psi4 <https://psicode.org/>`_. Default: ``1``.
    * - ``electron_propagation``
      - Electronic propagator: ``etrs`` (enforced time-reversal symmetry) or
        ``pc`` (predictor–corrector). Default: ``etrs``.
@@ -93,12 +109,12 @@ Parameters
      - When ``True`` subtract the permanent dipole from the light–matter
        coupling. Default: ``False``.
    * - ``dft_grid_name``
-     - Psi4 quadrature grid label (``SG0``, ``SG1`` …). Default: ``SG0``.
+     - `Psi4 <https://psicode.org/>`_ quadrature grid label (``SG0``, ``SG1`` …). Default: ``SG0``.
    * - ``dft_radial_points``
-     - Number of radial grid points (negative values select Psi4 defaults).
+     - Number of radial grid points (negative values select `Psi4 <https://psicode.org/>`_ defaults).
        Default: ``-1``.
    * - ``dft_spherical_points``
-     - Number of angular grid points (negative values select Psi4 defaults).
+     - Number of angular grid points (negative values select `Psi4 <https://psicode.org/>`_ defaults).
        Default: ``-1``.
    * - ``checkpoint``
      - When ``True`` write ``rttddft_checkpoint_id_<n>.npy`` snapshots for
@@ -114,13 +130,13 @@ Returned data
 -------------
 
 - ``time_au`` – Simulation clock in atomic units.
-- ``energy_au`` – Total electronic energy from Psi4.
+- ``energy_au`` – Total electronic energy from `Psi4 <https://psicode.org/>`_.
 - ``mu_x_au``, ``mu_y_au``, ``mu_z_au`` – Time-dependent dipole components.
 
 Notes
 -----
 
-- Ensure the Psi4 executable or Python module is available on ``PATH``/
+- Ensure the `Psi4 <https://psicode.org/>`_ executable or Python module is available on ``PATH``/
   ``PYTHONPATH`` for the driver process.
-- Additional Psi4 keywords can be supplied via environment variables or by
-  editing the Psi4 input template prior to running the driver.
+- Additional `Psi4 <https://psicode.org/>`_ keywords can be supplied via environment variables or by
+  editing the `Psi4 <https://psicode.org/>`_ input template prior to running the driver.

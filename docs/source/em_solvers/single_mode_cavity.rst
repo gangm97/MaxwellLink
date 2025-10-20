@@ -8,10 +8,27 @@ supporting the same :class:`maxwelllink.Molecule` abstraction used by the Meep
 backend, making it well suited for rapid prototyping, regression tests, and
 workflows focused on one classical cavity mode.
 
+.. note::
+
+  The cavity replaces the full EM grid with canonical coordinate :math:`q_c` and momentum :math:`p_c` obeying
+
+  .. math::
+
+     \dot{q}_c = p_c, \qquad
+     \dot{p}_c = -\omega_c^{2} q_c - \kappa\, p_c + g \sum_{m} \frac{d\mu_{m}}{dt} + D(t),
+
+  where :math:`\omega_c` is ``frequency_au``, :math:`\kappa` is ``damping_au``, :math:`g` is ``coupling_strength``, and :math:`D(t)` is the optional external drive. The sum runs over the selected dipole component of each coupled molecule. The effective electric field returned to the drivers is
+
+  .. math::
+
+     E(t) = - g\, p_c(t),
+
+  ensuring energy balance between the cavity mode and the molecular dipole currents.
+
 Requirements
 ------------
 
-- No additional dependencies beyond the MaxwellLink Python stack are required.
+- No additional dependencies beyond the **MaxwellLink** Python stack are required.
 
 Usage
 -----
@@ -120,7 +137,7 @@ populates:
 
 Each :class:`~maxwelllink.Molecule` keeps
 :attr:`~maxwelllink.Molecule.additional_data_history`, which records driver
-diagnostics (e.g., TLS populations, energies, timestamps). Socket drivers may
+data (e.g., TLS populations, energies, timestamps). Socket drivers may
 append extra JSON payloads through the hub; embedded drivers populate the same
 history via :meth:`maxwelllink.Molecule.append_additional_data`.
 

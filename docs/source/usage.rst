@@ -1,25 +1,25 @@
 Usage Guide
 ===========
 
-This guide walks through three ways to couple :class:`maxwelllink.Molecule` with
+This guide walks through **three** ways to couple :class:`maxwelllink.Molecule` with
 EM solvers using a single TLS molecule as the working example. Users can
 check tutorials under :doc:`tutorials/index` for more detailed examples and
 explanations.
 
 .. note::
 
-   MaxwellLink ships a legacy :class:`maxwelllink.SocketMolecule` API
+   **MaxwellLink** ships a legacy :class:`maxwelllink.SocketMolecule` API
    used throughout ``tests/test_tls``. The patterns below focus on the unified
    :class:`maxwelllink.Molecule` interface, which works for both socket and
    embedded (non-socket) drivers.
 
-When using Meep FDTD as the EM solver, below we will introduce three ways
+When using `Meep <https://meep.readthedocs.io/en/latest/>`_ FDTD as the EM solver, below we will introduce three ways
 to run self-consistent light-matter simulations with a TLS molecule.
 
 Single process (no sockets)
 ---------------------------
 
-The simplest setup instantiates the TLS driver inside the Meep process. This
+The simplest setup instantiates the TLS driver inside the `Meep <https://meep.readthedocs.io/en/latest/>`_ process. This
 avoids socket traffic entirely and is ideal for prototyping or small-scale
 benchmarks.
 
@@ -60,11 +60,11 @@ Within the same interpreter, you can analyze the TLS diagnostics through
 Local multi-process run (UNIX socket)
 -------------------------------------
 
-When we want Meep and the molecular driver to run as separate processes on the
+When we want `Meep <https://meep.readthedocs.io/en/latest/>`_ and the molecular driver to run as separate processes on the
 same machine, use a UNIX domain socket. The hub listens on ``/tmp/socketmxl_<name>``
 and the driver connects with ``--unix``.
 
-Meep script:
+`Meep <https://meep.readthedocs.io/en/latest/>`_ script:
 
 .. code-block:: python
 
@@ -100,12 +100,12 @@ Driver command (same laptop/workstation):
      --param "omega=0.242, mu12=187, orientation=2, pe_initial=1e-3"
 
 UNIX sockets avoid port collisions and usually takes less time for communication.
-MaxwellLink waits for the driver to connect before advancing the simulation.
+**MaxwellLink** waits for the driver to connect before advancing the simulation.
 
 Distributed run (TCP socket)
 ----------------------------
 
-For multi-node deployments (e.g., Meep on one node and ``mxl_driver`` on another),
+For multi-node deployments (e.g., `Meep <https://meep.readthedocs.io/en/latest/>`_ on one node and ``mxl_driver`` on another),
 use a TCP socket. Let the OS pick a free port to prevent clashes.
 
 Meep script:
@@ -141,7 +141,7 @@ Meep script:
    sim.run(until=90)
 
 Setting ``host=\"\"`` binds the hub to all interfaces (equivalent to ``0.0.0.0``).
-We need to share the public hostname or IP of the Meep node and ``port``
+We need to share the public hostname or IP of the `Meep <https://meep.readthedocs.io/en/latest/>`_ node and ``port``
 with the driver.
 
 Driver command (run on the remote node):
@@ -151,7 +151,7 @@ Driver command (run on the remote node):
    mxl_driver --model tls --address <meep-hostname> --port <port> \
      --param "omega=0.242, mu12=187, orientation=2, pe_initial=1e-3"
 
-Replace ``<meep-hostname>`` with the reachable address of the Meep node. Open
+Replace ``<meep-hostname>`` with the reachable address of the `Meep <https://meep.readthedocs.io/en/latest/>`_ node. Open
 firewall ports if required by your cluster configuration.
 
 Inspecting TLS output
@@ -173,7 +173,7 @@ We can then compare the electronic excited-state trajectory to the analytical go
 MPI execution
 -------------
 
-MaxwellLink detects MPI automatically. Only rank 0 (the master) communicates with drivers
+**MaxwellLink** detects MPI automatically. Only rank 0 (the master) communicates with drivers
 while field integrals and returned molecular response are broadcast to worker ranks via
 ``mpi4py``. We can launch a MPI run with:
 
@@ -184,7 +184,7 @@ while field integrals and returned molecular response are broadcast to worker ra
 Driver restarts
 ---------------
 
-If a driver disconnects unexpectedly, the hub pauses the Meep time loop and
+If a driver disconnects unexpectedly, the hub pauses the `Meep <https://meep.readthedocs.io/en/latest/>`_ time loop and
 waits for the driver to reconnect. Enabling ``checkpoint=true`` and
 ``restart=true`` in the driver parameters lets expensive molecular dynamics
 recover from transient failures without restarting the EM simulation.
@@ -192,7 +192,7 @@ recover from transient failures without restarting the EM simulation.
 Single-mode cavity emulator
 ---------------------------
 
-For quick prototyping without launching Meep, use
+For quick prototyping without launching `Meep <https://meep.readthedocs.io/en/latest/>`_, use
 :class:`maxwelllink.SingleModeSimulation`. It models the EM field as one damped
 harmonic oscillator in atomic units and couples to the same ``Molecule``
 objects. Example:
