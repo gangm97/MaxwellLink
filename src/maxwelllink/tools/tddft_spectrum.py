@@ -3,9 +3,6 @@
 import numpy as np
 from maxwelllink.units import AU_TO_FS, AU_TO_EV
 
-linewidth = 1e-2
-
-
 def _pade(
     time,
     signal,
