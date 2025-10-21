@@ -31,7 +31,7 @@ Key capabilities
 - Operate under MPI: only the master rank in the EM simulation speaks to the drivers 
   while field data and molecular response are broadcast to worker ranks.
 - **Flexible to extend**: users can implement custom molecular drivers or EM solvers
-by writing a few wrapper functions; see :doc:`contributing` for details.
+  by writing a few wrapper functions; see :doc:`contributing` for details.
 
 Included EM solvers
 ------------------------
@@ -62,17 +62,14 @@ Learning path
    optional driver dependencies.
 2. :doc:`usage` shows how to launch a `Meep <https://meep.readthedocs.io/en/latest/>`_ simulation, connect a TLS driver, and
    inspect the returned molecular data.
-3. :doc:`theory` discusses the underlying physical models and numerical methods
-   implemented in **MaxwellLink**, which may help users understand the capabilities
-   and limitations of this toolkit.
-4. :doc:`tutorials/index` provides hands-on tutorials regarding setting up and using
+3. :doc:`tutorials/index` provides hands-on tutorials regarding setting up and using
    **MaxwellLink** with different EM solvers and drivers.
-5. :doc:`architecture` explains the socket protocol, molecular wrappers, and how
+4. :doc:`architecture` explains the socket protocol, molecular wrappers, and how
    **MaxwellLink** keeps the EM solver and drivers synchronized.
-6. :doc:`em_solvers/index` documents all shipped EM solvers, their required
+5. :doc:`em_solvers/index` documents all shipped EM solvers, their required
    parameters, and expected outputs.
-7. :doc:`drivers/index` documents all shipped molecular drivers, their required
+6. :doc:`drivers/index` documents all shipped molecular drivers, their required
    parameters, and expected outputs.
-8. :doc:`contributing` guides users on how to implement custom EM solvers
+7. :doc:`contributing` guides users on how to implement custom EM solvers
    and molecular drivers to extend the **MaxwellLink** framework.
-9. :doc:`api/maxwelllink` lists the complete API reference for all **MaxwellLink** classes and functions.
+8. :doc:`api/modules` lists the complete API reference for all **MaxwellLink** classes and functions.

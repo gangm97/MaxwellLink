@@ -10,4 +10,6 @@ EM solvers and molecular drivers.
 
    notebook/single_mode_tls.ipynb
    notebook/socket_tls_workflow.ipynb
-
+   notebook/ase_vs_ehrenfest.ipynb
+   notebook/multi_molecule_superradiance.ipynb
+   notebook/rttddft_hcn.ipynb

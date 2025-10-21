@@ -20,7 +20,7 @@ with any ASE-compatible calculator. The implementation is provided by
 
     \mathrm{d}\boldsymbol{\mu}/\mathrm{d}t = \sum_i Q_i \mathbf{v}_i, 
     
-  where :math:`Q_i` and :math:`\mathbf{v}_i` are the partial charge (defined in ``charges`` in :ref:`Parameters`) and velocity of atom
+  where :math:`Q_i` and :math:`\mathbf{v}_i` are the partial charge (defined in ``charges`` in :ref:`ase_parameters`) and velocity of atom
   :math:`i`.
 
 Requirements
@@ -62,6 +62,8 @@ Non-socket mode
        # ...
    )
 
+
+.. _ase_parameters:
 
 Parameters
 ----------

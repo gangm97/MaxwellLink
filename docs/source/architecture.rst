@@ -40,7 +40,7 @@ SocketHub
   use.
 
 Abstract Molecule
----------
+-----------------
 
 ``Molecule`` provides a unified interface for constructing molecular 
 drivers for both socket communications and non-socket (single-process) runs. Pass

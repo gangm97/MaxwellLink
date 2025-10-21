@@ -1,4 +1,6 @@
-"""Utilities for spectral post-processing of MD simulations."""
+"""
+Utilities for spectral post-processing of MD simulations.
+"""
 
 import numpy as np
 from scipy import signal, fftpack

@@ -60,7 +60,7 @@ LAMMPS input
 
 Add the fix to the group of atoms to be coupled:
 
-.. code-block:: lammps
+.. code-block:: none
 
    fix 1 all mxl localhost 31415
 

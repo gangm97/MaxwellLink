@@ -14,7 +14,7 @@ Prerequisites
   such as LAMMPS from source.
 
 Create a conda environment
----------------------
+--------------------------
 
 .. code-block:: bash
 
@@ -24,7 +24,7 @@ Create a conda environment
    conda activate "$CONDA_ENV"
 
 Install **MaxwellLink** from source
--------------------------------
+-----------------------------------
 
 .. code-block:: bash
 

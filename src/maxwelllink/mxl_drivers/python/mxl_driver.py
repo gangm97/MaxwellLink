@@ -441,7 +441,7 @@ def run_driver(
         Socket timeout in seconds.
     driver : DummyModel, default: DummyModel()
         Quantum dynamics model implementing the driver interface.
-    sockets_prefix : str, default: "/tmp/socketmxl_"
+    sockets_prefix : str, default: ``"/tmp/socketmxl_"``
         Prefix for UNIX domain socket paths (ignored for TCP/IP).
 
     Notes

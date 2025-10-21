@@ -96,7 +96,7 @@ Parameters
      - When ``True`` the driver attempts to load checkpointed data on startup. Default: ``False``.
 
 Reference custom module
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 The TLS regression test
 ``tests/test_qutip/test_meep_2d_socket_qutip_tls_relaxation.py`` launches the
