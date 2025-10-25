@@ -260,6 +260,8 @@ class SingleModeSimulation(DummyEMSimulation):
         self.acceleration = 0.0
 
         self.include_dse = bool(include_dse)
+        # TODO: remove this temporary variable eventually, 
+        # we should be able to set within Molecule class and decide whether to extrapolate or not there.
         self.molecule_half_step = bool(molecule_half_step)
 
         self.record_history = bool(record_history)
