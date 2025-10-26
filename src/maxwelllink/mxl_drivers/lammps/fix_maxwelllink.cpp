@@ -419,41 +419,6 @@ void FixMaxwellLink::handshake_if_needed()
       const double timeau_native = 0.024188843265864 * force->femtosecond;
       if (dt_au_recv > 0.0) {
         dt_native_recv = dt_au_recv * timeau_native;
-        // Force LAMMPS to use this dt on the master now
-        const double prior = update->dt;
-
-        update->update_time();
-        update->dt = dt_native_recv;
-        update->dt_default = 0;
-        if (true) update->integrate->reset_dt();
-        if (force->pair) force->pair->reset_dt();
-        for (auto &ifix : modify->get_fix_list()) ifix->reset_dt();
-        output->reset_dt();
-
-        // TODO: broadcast new dt to all ranks but we need to do it outside this function!
-
-        dt_synced = 1;
-        if (comm->me == 0) {
-          printf("[MaxwellLink] 1 atomic units time in LAMMPS native time units = %.15g\n", timeau_native);
-          printf("[MaxwellLink] MaxwellLink uses time step: dt_au = %.15g ->  dt_native (LAMMPS units) = %.15g\n",
-                 dt_au_recv, dt_native_recv);
-          printf("[MaxwellLink] Modified LAMMPS time step from %.15g to %.15g to match MaxwellLink dt!\n",
-                 prior, update->dt);
-          printf("[MaxwellLink] Make sure all coupled simulations use this time step, after the modification, LAMMPS dt = %.15g!\n", update->dt);
-        }
-      } else if (comm->me == 0) {
-        printf("[MaxwellLink] WARNING: INIT had no valid dt_au; keeping existing LAMMPS dt = %.15g\n",
-               update->dt);
-      }
-
-      // finally, pre-calculate dipole info at this initial step
-      double ke_au = 0.0;
-      double tempK = -1.0;
-      calc_dipole_info(mu_global, dmu_dt_global, ke_au, tempK);
-
-      for (size_t i =0; i < 3; ++i) {
-        mu_global_prev[i] = mu_global[i];
-        dmu_dt_global_prev[i] = dmu_dt_global[i];
       }
 
       initialized = 1;
@@ -465,6 +430,7 @@ void FixMaxwellLink::handshake_if_needed()
       //error->one(FLERR, "Fix MaxwellLink: server requested stop");
       printf("[MaxwellLink] Server requested stop/exit during handshake, exiting gracefully...\n");
       stop_requested = true;
+      error->one(FLERR, "[MaxwellLink] Exit requested by MaxwellLink server...");
       return;
     }
   }
@@ -475,11 +441,11 @@ void FixMaxwellLink::broadcast_dt()
   // broadcast dt_native_recv to all ranks
   double dtbuf = dt_native_recv;
   MPI_Bcast(&dtbuf, 1, MPI_DOUBLE, 0, world);
-  if (comm->me != 0) {
+  if (true) {
     dt_native_recv = dtbuf;
-    if (dt_native_recv > 0.0) {
+    const double prior = update->dt;
+    if (dt_native_recv > 0.0 && fabs(update->dt - dt_native_recv) > 1e-10) {
       // Force LAMMPS to use this dt on non-master ranks now
-      const double prior = update->dt;
       update->update_time();
       update->dt = dt_native_recv;
       update->dt_default = 0;
@@ -488,10 +454,18 @@ void FixMaxwellLink::broadcast_dt()
       for (auto &ifix : modify->get_fix_list()) ifix->reset_dt();
       output->reset_dt();
 
+      if (comm->me == 0) {
+          printf("[MaxwellLink] 1 atomic units time in LAMMPS native time units = %.15g\n", timeau_native);
+          printf("[MaxwellLink] MaxwellLink uses time step: dt_au = %.15g ->  dt_native (LAMMPS units) = %.15g\n",
+                 dt_au_recv, dt_native_recv);
+          printf("[MaxwellLink] Modified LAMMPS time step from %.15g to %.15g to match MaxwellLink dt!\n",
+                 prior, update->dt);
+          printf("[MaxwellLink] Make sure all coupled simulations use this time step, after the modification, LAMMPS dt = %.15g!\n", update->dt);
+      }
+
       if (comm->me == 1) { // rank 1 only
         printf("[MaxwellLink] Non-master rank modified LAMMPS time step from %.15g to %.15g to match MaxwellLink dt!\n",
                prior, update->dt);
-        printf("[MaxwellLink] Make sure all coupled simulations use this time step, after the modification, LAMMPS dt = %.15g!\n", update->dt);
       }
     }
   }
@@ -568,6 +542,19 @@ void FixMaxwellLink::initial_integrate(int /*vflag*/)
   // broadcast dt if needed
   if (dt_synced == 0) {
     broadcast_dt();
+  }
+
+  if (prcompute_dipole == 0) {
+      double ke_au = 0.0;
+      double tempK = -1.0;
+      calc_dipole_info(mu_global, dmu_dt_global, ke_au, tempK);
+
+      for (size_t i =0; i < 3; ++i) {
+        mu_global_prev[i] = mu_global[i];
+        dmu_dt_global_prev[i] = dmu_dt_global[i];
+      }
+
+      prcompute_dipole = 1;
   }
 
   // MPI_Barrier(world);

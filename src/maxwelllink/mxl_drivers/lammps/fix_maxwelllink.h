@@ -66,6 +66,7 @@ class FixMaxwellLink : public Fix {
    double dt_au_recv = 0.0;        // dt in atomic units received from INIT
    double dt_native_recv = 0.0;    // dt converted to LAMMPS native time units
    int dt_synced = 0;              // 0 until we've applied/broadcast dt
+   int prcompute_dipole = 0;       // 1 if we should compute dipole at initial_integrate
 
    // additional-data in JSON (master only)
    std::string extra_json;
