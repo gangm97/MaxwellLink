@@ -6,23 +6,25 @@ lightweight electromagnetic solver that replaces a full FDTD grid with a single
 damped harmonic oscillator. It evolves entirely in atomic units while
 supporting the same :class:`maxwelllink.Molecule` abstraction used by the Meep
 backend, making it well suited for rapid prototyping, regression tests, and
-workflows focused on one classical cavity mode.
+workflows focused on one classical cavity mode. Multiple molecular dipole
+components can be coupled simultaneously by supplying composite axes such as
+``"xy"``.
 
 .. note::
 
-  The cavity replaces the full EM grid with canonical coordinate :math:`q_c` and momentum :math:`p_c = \dot{q}_c` obeying
+  The cavity replaces the full EM grid with canonical coordinate :math:`\mathbf{q}_c` and momentum :math:`\mathbf{p}_c = \dot{\mathbf{q}}_c` obeying the component-wise equation
 
   .. math::
 
-     \ddot{q}_c = -\omega_c^{2} q_c - \varepsilon \sum_{m} \mu_{m} - \kappa \dot{q}_c + D(t),
+     \ddot{\mathbf{q}}_c = -\omega_c^{2} \mathbf{q}_c - \varepsilon \sum_{m} \boldsymbol{\mu}_{m} - \kappa \dot{\mathbf{q}}_c + D(t),
 
-  where :math:`\omega_c` is ``frequency_au``, :math:`\kappa` is ``damping_au``, :math:`g = 1/\sqrt{\epsilon_0 V}` is ``coupling_strength``, and :math:`D(t)` is the optional external drive. The sum runs over the selected dipole component of each coupled molecule. The effective electric field returned to the drivers is
+  where :math:`\omega_c` is ``frequency_au``, :math:`\kappa` is ``damping_au``, :math:`\varepsilon = 1/\sqrt{\epsilon_0 V}` is ``coupling_strength``, and :math:`D(t)` is the optional external drive. The sum runs over the dipole components selected by ``coupling_axis`` for each coupled molecule. The effective electric field returned to the drivers is
 
   .. math::
 
-     E(t) = -\varepsilon\, q_c(t) - \delta_{\mathrm{DSE}} \frac{\varepsilon^{2}}{\omega_c^{2}}\, \mu(t),
+     \mathbf{E}(t) = -\varepsilon\, \mathbf{q}_c(t) - \delta_{\mathrm{DSE}} \frac{\varepsilon^{2}}{\omega_c^{2}}\, \boldsymbol{\mu}(t),
 
-  with :math:`\mu(t)` the summed dipole along ``coupling_axis`` and :math:`\delta_{\mathrm{DSE}} = 1` only when ``include_dse=True``.
+  with :math:`\boldsymbol{\mu}(t)` the summed molecular dipole restricted to the requested axes and :math:`\delta_{\mathrm{DSE}} = 1` only when ``include_dse=True``.
 
 Requirements
 ------------
@@ -48,7 +50,8 @@ Socket mode
        damping_au=0.0,
        molecules=[molecule],
        coupling_strength=1e-4,
-       qc_initial=1e-5,
+       qc_initial=[0, 0, 1e-5],
+       coupling_axis="z",
        hub=hub,
        record_history=True,
    )
@@ -81,7 +84,8 @@ Non-socket mode
        damping_au=0.0,
        molecules=[tls],
        coupling_strength=1e-4,
-       qc_initial=1e-5,
+       qc_initial=[0, 0, 1e-5],
+       coupling_axis="z",
        record_history=True,
    )
 
@@ -110,20 +114,20 @@ Parameters
    * - ``coupling_strength``
      - Scalar prefactor :math:`g` for the molecular polarization feedback. Default: ``1.0``.
    * - ``coupling_axis``
-     - Field component coupled to the molecules: ``0/1/2`` or ``"x"/"y"/"z"``. Default: ``2`` (``z``).
+     - One or more dipole components to couple (case-insensitive union of ``"x"``, ``"y"``, ``"z"``, e.g. ``"xy"``). Default: ``"xy"``.
    * - ``hub``
      - Optional :class:`~maxwelllink.SocketHub` shared by all socket-mode molecules.
        The simulation infers the hub from the first socket molecule when omitted.
    * - ``qc_initial``
-     - Initial cavity coordinate :math:`q_c(0)` (a.u.). Default: ``0.0``.
+     - Initial cavity coordinate vector (sequence of three floats or scalar applied to each coupled axis). Default: ``[0.0, 0.0, 0.0]``.
    * - ``pc_initial``
-     - Initial cavity momentum :math:`\dot{q}_c(0)` (a.u.). Default: ``0.0``.
+     - Initial cavity momentum vector (a.u.). Default: ``[0.0, 0.0, 0.0]``.
    * - ``mu_initial``
-     - Initial total molecular dipole along the coupling axis (a.u.). Default: ``0.0``.
+     - Initial total molecular dipole vector prior to axis masking (a.u.). Default: ``[0.0, 0.0, 0.0]``.
    * - ``dmudt_initial``
-     - Initial time derivative of the total molecular dipole along the coupling axis (a.u.). Default: ``0.0``.
+     - Initial time derivative of the total molecular dipole vector (a.u.). Default: ``[0.0, 0.0, 0.0]``.
    * - ``molecule_half_step``
-     - When ``True`` extrapolate molecular responses from half-step data (use ``False`` for full-step drivers). Default: ``True``.
+     - When ``True`` extrapolate molecular responses from half-step data (use ``False`` for full-step drivers). Default: ``False``.
    * - ``record_history``
      - When ``True`` store histories for time, field, momentum, drive, and net molecular response.
        Default: ``True``.
