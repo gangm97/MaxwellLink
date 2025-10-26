@@ -554,13 +554,18 @@ class SingleModeSimulation(DummyEMSimulation):
             steps = int(np.ceil((until - self.time) / self.dt))
 
         start_time = time.perf_counter()
+        previous_time = start_time
         for idx in range(int(steps)):
             self.step()
 
             if (idx + 1) % 1000 == 0:
-                elapsed = time.perf_counter() - start_time
+
+                current_time = time.perf_counter()
+                avg_time_per_step = (current_time - previous_time) / 1000.0
+                previous_time = current_time
+
+                elapsed = current_time - start_time
                 remaining = (elapsed / (idx + 1)) * (steps - (idx + 1))
-                avg_time_per_step = float(elapsed) / float((idx + 1))
                 print(
                     f"[SingleModeCavity] Completed {idx + 1}/{steps} [{(idx + 1) / steps * 100:.1f}%] steps, time/step: {avg_time_per_step:.2e} seconds, remaining time: {remaining:.2f} seconds."
                 )
