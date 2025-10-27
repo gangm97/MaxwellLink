@@ -3,7 +3,7 @@ Contributing
 
 This page highlights the key extension points in **MaxwellLink** and the patterns we
 recommend when adding new molecular drivers or electromagnetics (EM) solvers. The
-codebase follows a “thin core, pluggable back-ends” design: the socket protocol,
+codebase follows a “thin core, pluggable backends” design: the socket protocol,
 shared unit helpers, and :class:`maxwelllink.Molecule` abstraction hide most of the
 coupling logic so new components only need to implement domain-specific details.
 
@@ -11,11 +11,11 @@ Source Layout
 -------------
 
 - ``src/maxwelllink/mxl_drivers/python/models``: Python molecular drivers (TLS,
-  QuTiP, RTTDDFT, ASE, …) that inherit from
+  QuTiP, RTTDDFT, ASE, ...) that inherit from
   :class:`maxwelllink.mxl_drivers.python.models.dummy_model.DummyModel`.
 - ``src/maxwelllink/mxl_drivers/lammps``: C++ socket client 
   (``fix_maxwelllink``) for LAMMPS, inspired by the `i-PI <https://docs.ipi-code.org/>`_ project.
-- ``src/maxwelllink/em_solvers``: EM back-ends such as the Meep wrapper and the
+- ``src/maxwelllink/em_solvers``: EM backends such as the Meep wrapper and the
   single-mode cavity solver. Each solver ships its own unit system and molecule
   wrapper.
 - ``tests/``: Pytest suites that exercise both socket and embedded modes.
@@ -93,18 +93,60 @@ Testing tips
 
 - Add unit tests in ``tests/`` that run the driver in embedded mode (instantiate
   :class:`maxwelllink.Molecule` with ``driver="<name>"``) and, if possible, through
-  the socket handshake using ``SocketHub``. The TLS and ASE tests provide patterns.
+  the socket communication using ``SocketHub``.
 
-- Run ``pytest tests/<area>`` before opening a pull request. Socket tests can be
-  slower; scope them narrowly around new functionality.
+- Run ``pytest tests/<area>`` before opening a pull request. 
+
+
+
+Connecting to External C++/Fortran Drivers
+-----------------------------------
+
+External MD or quantum codes written in C++/Fortran can communicate with MaxwellLink through
+the socket protocol. The LAMMPS driver (``fix_maxwelllink.cpp``) serves as a
+production-ready reference for implementation. Experienced developers
+can modify the LAMMPS driver to connect production-level codes to MaxwellLink.
+
+.. admonition:: Numerical considerations for implementing a molecular driver
+
+  By default, **MaxwellLink** sends the regularized E-field vector at step :math:`n` to the molecular driver and
+  expects the molecular dipole time derivative at step :math:`n+1/2` in return. This requirement is particularly important for
+  **energy conservation** in the FDTD EM solvers, which use E-field and electric current densities in staggered time grids.
+
+  This requirement is automatically satisfied if the molecular driver propagates electronic dynamics when building the Hamiltonian
+  at mid-point time steps (such as RT-TDDFT or using model Hamiltonians):
+
+  .. math::
+
+     \mathbf{P}^{\mathrm{e}}(t+\Delta t/2) = e^{-i \mathbf{H}^{\mathrm{e}}(t) \Delta t / \hbar} \mathbf{P}^{\mathrm{e}}(t-\Delta t/2) e^{i \mathbf{H}^{\mathrm{e}}(t) \Delta t / \hbar} .
+
+  Molecular information calculated using the new density matrix :math:`\mathbf{P}^{\mathrm{e}}(t+\Delta t/2)` (such as dipole moment and its time derivative) will then correspond to step :math:`n+1/2`.
+
+  However, if the molecular drivers use a velocity-verlet algorithm to propagate nuclear motion (such as classical MD drivers), special care is needed to ensure the dipole time derivative is evaluated at step :math:`n+1/2`. 
+  This is because in a standard velocity-verlet scheme, the electric field alters nuclear forces at step :math:`n`, 
+  while nuclear velocities (and thus dipole time derivatives) and positions (and thus dipole vectors) are also updated to step :math:`n` at the end of one velocity-verlet cycle. In other words, both the sent E-field
+  and the returned dipole time derivative (or dipole vector) correspond to the same step, violating the staggered time grid requirement in **MaxwellLink**.
+
+  To resolve this issue, developers can (i) return the extrapolated dipole time derivative (and dipole vector) at step :math:`n+1/2` using the computed values at steps :math:`n` 
+  and previously returned values at step :math:`n-1/2`.
+
+  .. math::
+
+     \frac{d\mu}{dt}\Big|_{t+(n+1/2)\Delta t} \approx 2 \frac{d\mu}{dt}\Big|_{t+n\Delta t} - \frac{d\mu}{dt}\Big|_{t+(n-1/2)\Delta t} .
+
+  Of course, developers may also (ii) further propagate nuclear velocities to step :math:`n+1/2` internally to return the correct dipole time derivative, but this would cause more difficulties in implementation and can be more expensive, especially if
+  the users wish to maintain compatibility with existing MD codes. For example, in LAMMPS, this would require an additional MPI for loop over all atoms, which can be costly for large systems.
+
+  Users should be aware of these numerical considerations when developing new molecular drivers that involve nuclear motion.
+
 
 Implementing a New EM Solver
-----------------------------
-
+--------------------------------
+  
 EM solvers orchestrate the Maxwell-time stepping, query molecules for their source
-amplitudes, and convert between native units and atomic units. Existing back-ends
-(``meep.py`` and ``single_mode_cavity.py``) demonstrate both a grid-based solver and
-an ordinary differential equation (ODE) toy model.
+amplitudes, and convert between native units and atomic units. Existing backends
+(``meep.py`` and ``single_mode_cavity.py``) demonstrate both a grid-based FDTD EM solver and
+a single-mode cavity toy model.
 
 Core building blocks
 ~~~~~~~~~~~~~~~~~~~~
@@ -114,16 +156,14 @@ Core building blocks
   into atomic units.
 
 - :class:`~maxwelllink.em_solvers.dummy_em.MoleculeDummyWrapper` wraps
-  :class:`maxwelllink.Molecule` instances so the solver can treat socket and embedded
-  drivers uniformly.
-  
-- :class:`~maxwelllink.em_solvers.dummy_em.DummyEMSimulation` offers a minimal
-  container; real solvers typically extend it with solver-specific state and a
-  :meth:`run` loop.
+  :class:`maxwelllink.Molecule` instances so the unique molecular setting for one
+  EM solver can be specified.
 
-- :class:`maxwelllink.sockets.SocketHub` handles multiplexing of socket-mode drivers
-  and exposes :meth:`register_molecule_return_id` plus the barrier used during
-  time-stepping.
+- :class:`~maxwelllink.em_solvers.dummy_em.DummyEMSimulation` is the main simulation container exposed to users; 
+  real solvers typically extend it with solver-specific operations in a :meth:`run` loop.
+
+- :class:`maxwelllink.sockets.SocketHub` handles the socket protocol for molecules
+  operating in socket mode.
 
 Solver skeleton
 ~~~~~~~~~~~~~~~
@@ -158,7 +198,7 @@ Solver skeleton
 
 4. Implement ``AwesomeSimulation`` that wires everything together. Common steps:
 
-   - Normalize the time step, mesh spacing, and :class:`Molecule` wrappers.
+   - Define the time step, and :class:`Molecule` wrappers.
 
    - Split molecules by mode (socket vs. non-socket) and call
      ``m.initialize_driver`` for embedded drivers.
@@ -177,26 +217,15 @@ Solver skeleton
    so users can instantiate ``mxl.AwesomeSimulation``. Update
    ``docs/source/em_solvers/index.rst`` with a new page describing runtime knobs.
 
-Prefer mirroring the structure in ``MeepSimulation.run``: insert the MaxwellLink
-barrier as the first step function so user-provided callbacks still run each step.
-
-Connecting C++ or External Packages
------------------------------------
-
-External MD or quantum codes written in C++/Fortran can talk to MaxwellLink through
-the socket protocol. The LAMMPS driver (``fix_maxwelllink.cpp``) serves as a
-production-ready reference that mirrors the i-PI client workflow. Experienced developers
-can modify the LAMMPS driver to connect production-level codes to MaxwellLink.
-
 
 Testing and Documentation
 -------------------------
 
 - Extend ``tests/`` with regression coverage for new solvers/drivers. For socket
-  clients, prefer lightweight smoke tests that execute a few time steps.
+  clients, prefer lightweight smoke tests that execute within half a minute.
 
 - Update Sphinx docs so users can discover the feature (driver guide, EM solver
   page, release notes if applicable).
 
-- Run ``make -C docs html`` locally to ensure the documentation builds cleanly.
+- Run ``make doc html`` locally to ensure the documentation builds cleanly.
   Address any warnings related to the new content before submitting a pull request.
