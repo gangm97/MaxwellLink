@@ -231,6 +231,13 @@ class RTTDDFTModel(DummyModel):
                 "[molecule %d] To ensure the correct timing, the adjusted RT-TDDFT time step is dt_rttddft_au=%.4f a.u."
                 % (self.molecule_id, self.dt_rttddft_au)
             )
+        if self.ratio_timestep > 1:
+            print(
+                "[molecule %d] WARNING: The driver will perform %d RT-TDDFT sub-steps internally for each FDTD step, \
+                    which does not exactly conserve energy, please use with caution. It is recommended to set the FDTD \
+                        time step equal to the RT-TDDFT time step for accurate energy conservation."
+                % (self.molecule_id, self.ratio_timestep)
+            )
 
         if self.engine == "psi4":
             self._init_psi4()

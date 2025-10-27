@@ -142,6 +142,7 @@ class SingleModeSimulation(DummyEMSimulation):
         record_history: bool = True,
         include_dse: bool = False,
         molecule_half_step: bool = False,
+        shift_dipole_baseline: bool = False,
     ):
         """
         Parameters
@@ -176,7 +177,9 @@ class SingleModeSimulation(DummyEMSimulation):
             Include dipole self-energy term in the simulation.
         molecule_half_step : bool, default: True
             Whether to further evaluate molecular info for another half time step.
-            (This temporarily variable needs to be set True for velocity-Verlet based molecule propagators)
+        shift_dipole_baseline : bool, default: False
+            Whether to shift all dipole values using the initial dipole value, so initial dipole value is changed to zero.
+            Setting this to True can facilitate simulating strong coupling systems with large permanent dipoles.
         """
 
         super().__init__(hub=hub, molecules=molecules)
@@ -245,6 +248,14 @@ class SingleModeSimulation(DummyEMSimulation):
 
         self.include_dse = bool(include_dse)
         self.molecule_half_step = bool(molecule_half_step)
+        self.shift_dipole_baseline = bool(shift_dipole_baseline)
+
+        if self.shift_dipole_baseline:
+            # shift all dipole values using the initial dipole value, so initial dipole value is zero
+            self.dipole_baseline = self.dipole.copy()
+            self.dipole -= self.dipole_baseline
+            self.dipole_prev = self.dipole.copy()
+            print("[SingleModeCavity] Shifted dipole baseline by:", self.dipole_baseline)
 
         self.record_history = bool(record_history)
         if self.record_history:
@@ -420,6 +431,8 @@ class SingleModeSimulation(DummyEMSimulation):
                 dipole_vec[0] += latest_data.get("mux_au") * rescaling_factor
                 dipole_vec[1] += latest_data.get("muy_au") * rescaling_factor
                 dipole_vec[2] += latest_data.get("muz_au") * rescaling_factor
+        if self.shift_dipole_baseline:
+            dipole_vec -= self.dipole_baseline
         return dipole_vec
 
     def _step_molecules(self, efield_vec: Sequence[float]):

@@ -398,7 +398,6 @@ class ASEModel(DummyModel):
         calc_kwargs: str = "",
         charges: Optional[Sequence[float]] = None,
         recompute_charges: bool = False,
-        n_substeps: int = 1,
         temperature_K: float = 0.0,
         verbose: bool = False,
         checkpoint: bool = False,
@@ -421,8 +420,6 @@ class ASEModel(DummyModel):
             If ``None``, set ``recompute_charges=True``.
         recompute_charges : bool, default: False
             If ``True``, query charges each step (e.g., Mulliken).
-        n_substeps : int, default: 1
-            Number of MD sub-steps per MEEP step.
         temperature_K : float, default: 0.0
             Initial temperature in Kelvin for the Maxwell–Boltzmann distribution.
         verbose : bool, default: False
@@ -478,7 +475,8 @@ class ASEModel(DummyModel):
                     "Failed to parse 'charges' string into array; use format like '[0.1 -0.2 0.0 ...]'"
                 ) from e
         self.recompute_charges = bool(recompute_charges)
-        self.n_substeps = max(int(n_substeps), 1)
+        # now, let's only run MD for one time step at a time
+        self.n_substeps = 1
         self.temperature_K = temperature_K
 
         print("[ASEModel] user_charges =", self.user_charges)
@@ -497,6 +495,14 @@ class ASEModel(DummyModel):
         # cached for dmu/dt
         self._charges = None
         self._vel_angs_per_fs = None
+
+        # dipole and dmudt info in previous time steps
+        self.dipole_prev = None
+        self.dmudt_prev = None
+        self.dipole_middlepoint = None
+        self.dmudt_middlepoint = None
+        self.dipole_projected = None
+        self.dmudt_projected = None
 
     # -------------- heavy-load initialization (at INIT) --------------
 
@@ -617,7 +623,14 @@ class ASEModel(DummyModel):
         v_au = self._vel_angs_per_fs * (BOHR_PER_ANG / FS_TO_AU)
         amp = (self._charges.reshape(-1, 1) * v_au).sum(axis=0)
 
-        return amp
+        # MaxwellLink sends E-field at time step n, expects amp at time step n+1/2.
+        # However, with velocity verlet, if E-field is sent at time step n, then both velocity and position are updated to step n 
+        # at the final stage of velocity verlet. Therefore, we need to do a simple linear extrapolation here to get amp at time step n+1/2.
+        self.dmudt_prev = self.dmudt_projected.copy() if self.dmudt_projected is not None else amp.copy()
+        self.dmudt_middlepoint = amp.copy()
+        self.dmudt_projected = 2.0 * self.dmudt_middlepoint - self.dmudt_prev
+
+        return self.dmudt_projected
 
     # ------------ optional operation / checkpoint --------------
 
@@ -635,12 +648,22 @@ class ASEModel(DummyModel):
             A dictionary containing additional data.
         """
 
+        # MaxwellLink sends E-field at time step n, expects amp at time step n+1/2.
+        # However, with velocity verlet, if E-field is sent at time step n, then both velocity and position are updated to step n 
+        # at the final stage of velocity verlet. Therefore, we need to do a simple linear extrapolation here to get dipole at time step n+1/2.
+        self.dipole_prev = self.dipole_projected.copy() if self.dipole_projected is not None else self.forcewrap._cache_dipole_vec.copy()
+        self.dipole_middlepoint = self.forcewrap._cache_dipole_vec.copy()
+        self.dipole_projected = 2.0 * self.dipole_middlepoint - self.dipole_prev
+
         d = {
             "time_au": float(self.t),
             "energy_au": float(self.forcewrap._cache_energy),
-            "mux_au": float(self.forcewrap._cache_dipole_vec[0]),
-            "muy_au": float(self.forcewrap._cache_dipole_vec[1]),
-            "muz_au": float(self.forcewrap._cache_dipole_vec[2]),
+            "mux_au": float(self.dipole_projected[0]),
+            "muy_au": float(self.dipole_projected[1]),
+            "muz_au": float(self.dipole_projected[2]),
+            "mux_m_au": float(self.dipole_middlepoint[0]),
+            "muy_m_au": float(self.dipole_middlepoint[1]),
+            "muz_m_au": float(self.dipole_middlepoint[2]),
             "temperature_K": float(self.atoms.get_temperature()),
         }
         return d

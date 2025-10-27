@@ -41,7 +41,7 @@ Socket mode
    mxl_driver --model ase --port 31415 \
      --param "atoms=${PWD}/tests/data/hcn.xyz, calculator=psi4, \
               calc_kwargs=method=b3lyp,basis=sto-3g, \
-              charges=[1.0 -1.0 0.0], n_substeps=5, temperature_K=300, \
+              charges=[1.0 -1.0 0.0], temperature_K=300, \
               recompute_charges=false"
 
 Non-socket mode
@@ -56,7 +56,6 @@ Non-socket mode
            "calculator": "psi4",
            "calc_kwargs": "method=b3lyp,basis=sto-3g",
            "charges": "[1.0 -1.0 0.0]",
-           "n_substeps": 5,
            "temperature_K": 300.0,
        },
        # ...
@@ -88,8 +87,6 @@ Parameters
    * - ``recompute_charges``
      - When ``True`` the driver queries the wrapped calculator for charges at
        every step instead of using ``charges``. Default: ``False``.
-   * - ``n_substeps``
-     - Number of velocity-Verlet steps per **MaxwellLink** time step. Default: ``1``.
    * - ``temperature_K``
      - Initial temperature passed to ``MaxwellBoltzmannDistribution`` before
        propagation. Default: ``0.0``.
