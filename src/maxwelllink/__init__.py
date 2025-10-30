@@ -26,6 +26,7 @@ __all__ = [
     "MeepSimulation",
     "Molecule",
     "SingleModeSimulation",
+    "Vector3",
 ]
 
 
@@ -57,7 +58,7 @@ def __getattr__(name):
         "update_molecules_no_mpi",
         "update_molecules_no_socket",
     }:
-        from .molecule_legacy import (
+        from .molecule import (
             TLSMolecule,
             SocketMolecule,
             update_molecules,
@@ -69,9 +70,11 @@ def __getattr__(name):
 
     if name in {
         "Molecule",
+        "Vector3",
     }:
         from .molecule import (
             Molecule,
+            Vector3,
         )
 
         return locals()[name]

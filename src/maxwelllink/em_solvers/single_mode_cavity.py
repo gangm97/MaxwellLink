@@ -144,15 +144,15 @@ class SingleModeSimulation(DummyEMSimulation):
         molecule_half_step: bool = False,
         shift_dipole_baseline: bool = False,
     ):
-        """
+        r"""
         Parameters
         ----------
         dt_au : float
             Simulation time step in atomic units.
         frequency_au : float
-            Cavity angular frequency :math:`\\omega_{\rm c}` (a.u.).
+            Cavity angular frequency :math:`\omega_{\rm c}` (a.u.).
         damping_au : float
-            Damping constant :math:`\\kappa` (a.u.).
+            Damping constant :math:`\kappa` (a.u.).
         molecules : iterable of Molecule, optional
             Molecules coupled to the cavity.
         drive : float or callable, optional
@@ -161,7 +161,7 @@ class SingleModeSimulation(DummyEMSimulation):
             Prefactor :math:`\varepsilon`.
         coupling_axis : str, default: "xy"
             Component(s) of the molecular dipole used for coupling.
-        hub : SocketHub, optional
+        hub : :class:`~maxwelllink.sockets.sockets.SocketHub`, optional
             Socket hub shared by all socket-mode molecules.
         qc_initial : list, default: [0.0, 0.0, 0.0]
             Initial cavity field coordinate (a.u.).

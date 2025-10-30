@@ -1,16 +1,16 @@
 Usage Guide
 ===========
 
-This guide walks through **three** ways to couple :class:`maxwelllink.Molecule` with
+This guide walks through **three** ways to couple :class:`~maxwelllink.molecule.molecule.Molecule` with
 EM solvers using a single TLS molecule as the working example. Users can
 check tutorials under :doc:`tutorials/index` for more detailed examples and
 explanations.
 
 .. note::
 
-   **MaxwellLink** ships a legacy :class:`maxwelllink.SocketMolecule` API
+   **MaxwellLink** ships a legacy :class:`~maxwelllink.molecule.molecule_legacy.SocketMolecule` API
    used throughout ``tests/test_tls``. The patterns below focus on the unified
-   :class:`maxwelllink.Molecule` interface, which works for both socket and
+   :class:`~maxwelllink.molecule.molecule.Molecule` interface, which works for both socket and
    embedded (non-socket) drivers.
 
 When using `Meep <https://meep.readthedocs.io/en/latest/>`_ FDTD as the EM solver, below we will introduce three ways
@@ -193,7 +193,7 @@ Single-mode cavity emulator
 ---------------------------
 
 For quick prototyping without launching `Meep <https://meep.readthedocs.io/en/latest/>`_, use
-:class:`maxwelllink.SingleModeSimulation`. It models the EM field as one damped
+:class:`~maxwelllink.em_solvers.single_mode_cavity.SingleModeSimulation`. It models the EM field as one damped
 harmonic oscillator in atomic units and couples to the same ``Molecule``
 objects. Example:
 

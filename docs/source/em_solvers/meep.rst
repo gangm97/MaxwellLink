@@ -124,9 +124,9 @@ Parameters
    * - Name
      - Description
    * - ``hub``
-     - Optional :class:`~maxwelllink.SocketHub`. Required for socket-connected molecules; ignored for embedded drivers.
+     - Optional :class:`~maxwelllink.sockets.sockets.SocketHub`. Required for socket-connected molecules; ignored for embedded drivers.
    * - ``molecules``
-     - Iterable of :class:`~maxwelllink.Molecule` instances. They are wrapped into :class:`~maxwelllink.em_solvers.meep.MoleculeMeepWrapper` and may mix socket and non-socket modes.
+     - Iterable of :class:`~maxwelllink.molecule.molecule.Molecule` instances. They are wrapped into :class:`~maxwelllink.em_solvers.meep.MoleculeMeepWrapper` and may mix socket and non-socket modes.
    * - ``time_units_fs``
      - Meep time unit expressed in femtoseconds (default ``0.1``). Used to refresh molecular time steps and unit conversions.
    * - ``geometry``
@@ -145,7 +145,7 @@ Parameters
 Returned data
 -------------
 
-- ``sim.molecules`` – list of :class:`MoleculeMeepWrapper` instances. Each wrapper exposes the underlying :class:`~maxwelllink.Molecule`.
+- ``sim.molecules`` – list of :class:`MoleculeMeepWrapper` instances. Each wrapper exposes the underlying :class:`~maxwelllink.molecule.molecule.Molecule`.
 - ``molecule.additional_data_history`` – diagnostics produced by the driver (time stamps, populations, energies, custom JSON payloads).
 - Standard Meep data channels remain available (e.g. ``sim.fields``, flux regions, near-to-far field monitors).
 - For debugging, ``maxwelllink.em_solvers.meep.instantaneous_source_amplitudes`` stores the most recent source amplitudes per polarization fingerprint.

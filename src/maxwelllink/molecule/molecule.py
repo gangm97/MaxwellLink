@@ -2,7 +2,7 @@
 A molecule class capable of operating in both socket and non-socket modes.
 
 In socket mode, the molecule communicates with an external process (e.g., a
-quantum driver) via a socket connection through ``SocketHub``.
+quantum driver) via a socket connection through :class:`~maxwelllink.sockets.sockets.SocketHub`.
 In non-socket mode, it directly instantiates a molecular dynamics driver defined
 in ``__drivers__`` (e.g., ``tlsmodel``, ``qutipmodel``).
 
@@ -16,9 +16,9 @@ import json
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from .sockets import SocketHub, am_master, mpi_bcast_from_master
-from .units import FS_TO_AU
-from .mxl_drivers.python.models import __drivers__
+from maxwelllink.sockets import SocketHub, am_master, mpi_bcast_from_master
+from maxwelllink.units import FS_TO_AU
+from maxwelllink.mxl_drivers.python.models import __drivers__
 
 
 @dataclass
@@ -57,7 +57,7 @@ class Molecule:
         """
         Parameters
         ----------
-        hub : SocketHub or None, optional
+        hub : :class:`~maxwelllink.sockets.sockets.SocketHub` or None, optional
             Socket hub for socket mode. If provided, ``driver`` must be ``None``.
         driver : str or None, optional
             Driver name for non-socket mode. If provided, ``hub`` must be ``None``.

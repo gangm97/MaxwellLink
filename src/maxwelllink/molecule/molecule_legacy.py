@@ -13,7 +13,7 @@ from scipy.linalg import expm
 from math import exp
 
 from typing import Optional, Dict, List
-from .sockets import SocketHub
+from maxwelllink.sockets import SocketHub
 import json
 from collections import defaultdict
 import atexit, weakref
@@ -910,7 +910,7 @@ class SocketMolecule(DummyMolecule):
 
         Parameters
         ----------
-        hub : SocketHub
+        hub : :class:`~maxwelllink.sockets.sockets.SocketHub`
             Socket hub handling driver connections.
         molecule_id : int
             Unique molecule identifier known to the driver.
@@ -1279,7 +1279,7 @@ def update_molecules_no_mpi(
 
     Parameters
     ----------
-    hub : SocketHub
+    hub : :class:`~maxwelllink.sockets.sockets.SocketHub`
         Socket hub to use for communication.
     molecules : list of SocketMolecule
         Molecules to advance.
@@ -1428,7 +1428,7 @@ def update_molecules(
 
     Parameters
     ----------
-    hub : SocketHub
+    hub : :class:`~maxwelllink.sockets.sockets.SocketHub`
         Socket hub used by the master rank.
     molecules : list of SocketMolecule
         Molecules to advance.

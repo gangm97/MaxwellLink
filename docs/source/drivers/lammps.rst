@@ -77,7 +77,7 @@ Parameters
      - Hostname or IP address of the **MaxwellLink** process (third argument in the
        ``fix`` command). Required.
    * - ``port``
-     - TCP port exposed by :class:`maxwelllink.SocketHub`. Must lie in ``(1024,
+     - TCP port exposed by :class:`~maxwelllink.sockets.sockets.SocketHub`. Must lie in ``(1024,
        65536]`` for TCP mode. Required.
    * - ``unix``
      - Optional flag (append ``unix`` to the ``fix`` command) to connect via a

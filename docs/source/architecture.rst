@@ -27,7 +27,7 @@ communicate through a socket protocol, inspired by the `i-PI <https://docs.ipi-c
 SocketHub
 ---------
 
-``SocketHub`` (:mod:`maxwelllink.sockets`) manages the inter-code communication:
+``SocketHub`` (:mod:`maxwelllink.sockets.sockets`) manages the inter-code communication:
 
 - Supports both TCP sockets (``host``/``port``) and UNIX domain sockets
   (``unixsocket``).
@@ -36,7 +36,7 @@ SocketHub
 - Detects dropped connections during sends or receives and pauses the EM solver
   until all expected drivers reconnect (see the reconnection loops exercised in
   ``tests/test_tls/test_meep_2d_socket_tls1_relaxation.py``).
-- Exposes helpers such as :func:`maxwelllink.sockets.get_available_host_port` for easy
+- Exposes helpers such as :func:`maxwelllink.sockets.sockets.get_available_host_port` for easy
   use.
 
 Abstract Molecule
@@ -67,17 +67,17 @@ inserts the appropriate step function for updating molecules when ``MeepSimulati
 When using ``MeepSimulation``, three additional parameters should be specified compared to a regular
 `meep.Simulation <https://meep.readthedocs.io/en/master/Python_User_Interface/#simulation>`_:
 
-- ``molecules``: a list of :class:`maxwelllink.Molecule` objects to couple to the EM solver.
+- ``molecules``: a list of :class:`~maxwelllink.molecule.molecule.Molecule` objects to couple to the EM solver.
 - ``time_units_fs``: the mapping between Meep time units and real time in femtoseconds. Meep uses
   dimensionless units internally, so specifying this parameter is necessary to convert between Meep units and other units systems.
-- ``hub``: an optional :class:`maxwelllink.sockets.SocketHub` object for socket-based drivers.
+- ``hub``: an optional :class:`~maxwelllink.sockets.sockets.SocketHub` object for socket-based drivers.
 
 .. note::
 
    With a ``SocketHub`` a step function :func:`maxwelllink.em_solvers.meep.update_molecules` is inserted in Meep FDTD simulation; 
    without a hub the step function falls back to :func:`maxwelllink.em_solvers.meep.update_molecules_no_socket`.
 
-``SingleModeSimulation``, defined in :func:`maxwelllink.em_solvers.single_mode_cavity.SingleModeSimulation`,
+``SingleModeSimulation``, defined in :class:`~maxwelllink.em_solvers.single_mode_cavity.SingleModeSimulation`,
 approximates the field as a single damped harmonic oscillator evolving in atomic
 units. It supports the same socket and non-socket molecule interfaces, making it
 useful for rapid prototyping or unit tests without launching Meep.

@@ -570,7 +570,7 @@ def update_molecules_no_mpi(
 
     Parameters
     ----------
-    hub : SocketHub
+    hub : :class:`~maxwelllink.sockets.sockets.SocketHub`
         Socket hub for driver communication.
     molecules : list of MoleculeMeepWrapper
         Molecules to couple.
@@ -711,7 +711,7 @@ def update_molecules(
 
     Parameters
     ----------
-    hub : SocketHub
+    hub : :class:`~maxwelllink.sockets.sockets.SocketHub`
         Socket hub for driver communication.
     molecules : list of MoleculeMeepWrapper
         Molecules to couple.
@@ -923,7 +923,7 @@ class MeepSimulation(mp.Simulation):
 
     Attributes
     ----------
-    hub : SocketHub or None
+    hub : :class:`~maxwelllink.sockets.sockets.SocketHub` or None
         Manager for socket communication with external drivers.
     molecules : list of MoleculeMeepWrapper
         Wrapped molecules coupled to the EM grid.
@@ -943,7 +943,7 @@ class MeepSimulation(mp.Simulation):
 
         Parameters
         ----------
-        hub : SocketHub or None, optional
+        hub : :class:`~maxwelllink.sockets.sockets.SocketHub` or None, optional
             Socket hub for driver communication.
         molecules : list or None, optional
             Molecules to couple; will be wrapped as ``MoleculeMeepWrapper``.

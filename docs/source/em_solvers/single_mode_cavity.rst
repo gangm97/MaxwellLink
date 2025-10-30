@@ -4,7 +4,7 @@ Single-Mode Cavity
 The :mod:`maxwelllink.em_solvers.single_mode_cavity` module provides a
 lightweight electromagnetic solver that replaces a full FDTD grid with a single
 damped harmonic oscillator. It evolves entirely in atomic units while
-supporting the same :class:`maxwelllink.Molecule` abstraction used by the Meep
+supporting the same :class:`~maxwelllink.molecule.molecule.Molecule` abstraction used by the Meep
 backend, making it well suited for rapid prototyping, regression tests, and
 workflows focused on one classical cavity mode. Multiple molecular dipole
 components can be coupled simultaneously by supplying composite axes such as
@@ -106,7 +106,7 @@ Parameters
    * - ``damping_au``
      - Linear damping coefficient :math:`\kappa` applied to the cavity momentum (a.u.).
    * - ``molecules``
-     - Iterable of :class:`~maxwelllink.Molecule` instances. Socket and non-socket
+     - Iterable of :class:`~maxwelllink.molecule.molecule.Molecule` instances. Socket and non-socket
        molecules can be mixed in the same simulation.
    * - ``drive``
      - Constant float or callable ``drive(time_au)`` returning the external drive term.
@@ -116,7 +116,7 @@ Parameters
    * - ``coupling_axis``
      - One or more dipole components to couple (case-insensitive union of ``"x"``, ``"y"``, ``"z"``, e.g. ``"xy"``). Default: ``"xy"``.
    * - ``hub``
-     - Optional :class:`~maxwelllink.SocketHub` shared by all socket-mode molecules.
+     - Optional :class:`~maxwelllink.sockets.sockets.SocketHub` shared by all socket-mode molecules.
        The simulation infers the hub from the first socket molecule when omitted.
    * - ``qc_initial``
      - Initial cavity coordinate vector (sequence of three floats or scalar applied to each coupled axis). Default: ``[0.0, 0.0, 0.0]``.
@@ -137,7 +137,7 @@ Parameters
 Returned data
 -------------
 
-Calling :class:`~maxwelllink.SingleModeSimulation` with ``record_history=True``
+Calling :class:`~maxwelllink.em_solvers.single_mode_cavity.SingleModeSimulation` with ``record_history=True``
 populates:
 
 - :attr:`SingleModeSimulation.time_history` – time stamps in atomic units.
@@ -147,16 +147,16 @@ populates:
 - :attr:`SingleModeSimulation.molecule_response_history` – summed molecular response along ``coupling_axis``.
 - :attr:`SingleModeSimulation.energy_history` – total energy of the cavity and coupled molecules (requires ``record_history=True``).
 
-Each :class:`~maxwelllink.Molecule` keeps
-:attr:`~maxwelllink.Molecule.additional_data_history`, which records driver
+Each :class:`~maxwelllink.molecule.molecule.Molecule` keeps
+:attr:`~maxwelllink.molecule.molecule.Molecule.additional_data_history`, which records driver
 data (e.g., TLS populations, energies, timestamps). Socket drivers may
 append extra JSON payloads through the hub; embedded drivers populate the same
-history via :meth:`maxwelllink.Molecule.append_additional_data`.
+history via :meth:`maxwelllink.molecule.molecule.Molecule.append_additional_data`.
 
 Notes
 -----
 
 - Provide either ``steps`` or ``until`` to :meth:`SingleModeSimulation.run`, not both.
-- Socket-mode molecules must all bind to the same :class:`~maxwelllink.SocketHub`;
+- Socket-mode molecules must all bind to the same :class:`~maxwelllink.sockets.sockets.SocketHub`;
   the simulation waits until every driver acknowledges initialization.
 - Setting ``record_history=False`` avoids list allocations for throughput-critical runs.

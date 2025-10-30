@@ -4,7 +4,7 @@ Contributing
 This page highlights the key extension points in **MaxwellLink** and the patterns we
 recommend when adding new molecular drivers or electromagnetics (EM) solvers. The
 codebase follows a “thin core, pluggable backends” design: the socket protocol,
-shared unit helpers, and :class:`maxwelllink.Molecule` abstraction hide most of the
+shared unit helpers, and :class:`~maxwelllink.molecule.molecule.Molecule` abstraction hide most of the
 coupling logic so new components only need to implement domain-specific details.
 
 Source Layout
@@ -27,7 +27,7 @@ Adding a Python Molecular Driver
 
 Python drivers encapsulate the quantum or classical model that responds to the EM
 field. They are loaded either via the ``mxl_driver`` CLI (socket mode) or
-instantiated directly through :class:`maxwelllink.Molecule` (embedded mode).
+instantiated directly through :class:`~maxwelllink.molecule.molecule.Molecule` (embedded mode).
 
 Driver skeleton
 ~~~~~~~~~~~~~~~
@@ -92,7 +92,7 @@ Testing tips
 ~~~~~~~~~~~~
 
 - Add unit tests in ``tests/`` that run the driver in embedded mode (instantiate
-  :class:`maxwelllink.Molecule` with ``driver="<name>"``) and, if possible, through
+  :class:`~maxwelllink.molecule.molecule.Molecule` with ``driver="<name>"``) and, if possible, through
   the socket communication using ``SocketHub``.
 
 - Run ``pytest tests/<area>`` before opening a pull request. 
@@ -100,7 +100,7 @@ Testing tips
 
 
 Connecting to External C++/Fortran Drivers
------------------------------------
+------------------------------------------
 
 External MD or quantum codes written in C++/Fortran can communicate with MaxwellLink through
 the socket protocol. The LAMMPS driver (``fix_maxwelllink.cpp``) serves as a
@@ -156,13 +156,13 @@ Core building blocks
   into atomic units.
 
 - :class:`~maxwelllink.em_solvers.dummy_em.MoleculeDummyWrapper` wraps
-  :class:`maxwelllink.Molecule` instances so the unique molecular setting for one
+  :class:`~maxwelllink.molecule.molecule.Molecule` instances so the unique molecular setting for one
   EM solver can be specified.
 
 - :class:`~maxwelllink.em_solvers.dummy_em.DummyEMSimulation` is the main simulation container exposed to users; 
   real solvers typically extend it with solver-specific operations in a :meth:`run` loop.
 
-- :class:`maxwelllink.sockets.SocketHub` handles the socket protocol for molecules
+- :class:`~maxwelllink.sockets.sockets.SocketHub` handles the socket protocol for molecules
   operating in socket mode.
 
 Solver skeleton
@@ -208,7 +208,7 @@ Solver skeleton
      * Gather fields at molecular sites, convert them to atomic units with
        ``AwesomeUnits.efield_em_to_au``, and call ``propagate`` on each wrapper.
      * After the solver advances its state, request source amplitudes (socket mode
-       via :class:`SocketHub`, non-socket via ``calc_amp_vector``) and inject them
+       via :class:`~maxwelllink.sockets.sockets.SocketHub`, non-socket via ``calc_amp_vector``) and inject them
        back into the EM update.
      * Push any additional per-molecule diagnostics into
        ``Molecule.additional_data_history``.
