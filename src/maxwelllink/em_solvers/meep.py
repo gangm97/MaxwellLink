@@ -15,7 +15,7 @@ import atexit
 from ..sockets import SocketHub
 from .dummy_em import DummyEMUnits, MoleculeDummyWrapper
 from ..molecule import Molecule, Vector3
-from ..units import FS_TO_AU
+from ..units import EV_TO_CM_INV, FS_TO_AU
 
 try:
     import meep as mp
@@ -216,9 +216,10 @@ class MeepUnits(DummyEMUnits):
             "- Length [x]: 1 mu = %.2E nm\n" % (299.792458 * self.time_units_fs),
             # "- Frequency (defining MEEP source frequency) [f]: 1 mu = %.4E THz\n"
             # % (41.341373335 / self.time_units_fs / 2.0 / np.pi),
-            "- Angular frequency [omega = 2 pi * f]: 1 mu = %.4E eV = %.4E a.u.\n"
+            "- Angular frequency [omega = 2 pi * f]: 1 mu = %.4E eV = %.4E cm-1 = %.4E a.u.\n"
             % (
                 0.242 / self.time_units_fs * 27.211 * 0.1,
+                0.242 / self.time_units_fs * 27.211 * 0.1 * EV_TO_CM_INV,
                 0.242 / self.time_units_fs * 0.1,
             ),
             "- Electric field [E]: 1 mu = %.2E V/m = %.2E a.u.\n"
