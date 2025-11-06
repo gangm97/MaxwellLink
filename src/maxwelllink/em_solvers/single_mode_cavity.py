@@ -101,11 +101,17 @@ class SingleModeSimulation(DummyEMSimulation):
     r"""
     Damped harmonic oscillator coupled to MaxwellLink molecules.
 
+    Under the dipole gauge, the total light-matter Hamiltonian is
+
+    .. math::
+
+        H = H_{mol} + \frac{1}{2} p_{\rm c}^2 + \frac{1}{2} \omega_{\rm c}^2 (q_{\rm c} + \frac{\varepsilon}{\omega_{\rm c}^2} \sum_i \mu_i)^2
+
     The cavity mode (classical harmonic oscillator) obeys
 
     .. math::
 
-        \ddot{q}_{\rm c} = -\omega_c^{2}\, q_{\rm c} \; - \; \varepsilon \sum_i mu_i \;-\; \gamma_{\rm c} \, p_{\rm c} \;+\; D(t),
+        \ddot{q}_{\rm c} = -\omega_c^{2}\, q_{\rm c} \; - \; \varepsilon \sum_i \mu_i \;-\; \gamma_{\rm c} \, p_{\rm c} \;+\; D(t),
 
     where the effective electric field of this cavity mode is
 
@@ -116,11 +122,23 @@ class SingleModeSimulation(DummyEMSimulation):
     where :math:`\varepsilon` is ``coupling_strength`` and the sum runs over the selected
     molecular axis of all molecules. The second term in the electric field accounts for the dipole self-energy term if enabled.
 
-    The total light-matter Hamiltonian is
+    Under the velocity gauge, :math:`d\mu/dt` is coupled to cavity momentum instead of :math:`\mu` to cavity position. The total Hamiltonian is
 
     .. math::
 
-        H = H_mol + \frac{1}{2} p_{\rm c}^2 + \frac{1}{2} \omega_{\rm c}^2 (q_{\rm c} + \frac{\varepsilon}{\omega_{\rm c}^2} \sum_i \mu_i)^2
+        H = H_{mol} + \frac{1}{2} (p_{\rm c} - \frac{\varepsilon}{\omega_{\rm c}} \sum_i \mu_i)^2 + \frac{1}{2} \omega_{\rm c}^2 q_{\rm c}^2
+
+    The cavity mode (classical harmonic oscillator) obeys
+
+    .. math::
+
+        \ddot{q}_{\rm c} = -\omega_c^{2}\, q_{\rm c} \; - \; \frac{\varepsilon}{\omega_{\rm c}} \sum_i \frac{d\mu_i}{dt} \;-\; \gamma_{\rm c} \, p_{\rm c} \;+\; D(t),
+
+    where the effective electric field of this cavity mode is
+
+    .. math::
+
+       E(t) = \frac{\varepsilon}{\omega_{\rm c}} \dot{q}_{\rm c}(t) =  \frac{\varepsilon}{\omega_{\rm c}} (p_c - \frac{\varepsilon}{\omega_{\rm c}} \sum_i \mu_i).
 
     All quantities are in atomic units.
     """
@@ -135,14 +153,15 @@ class SingleModeSimulation(DummyEMSimulation):
         coupling_strength: float = 1.0,
         coupling_axis: str = "xy",
         hub: Optional[SocketHub] = None,
-        qc_initial: list = [0.0, 0.0, 0.0],
-        pc_initial: list = [0.0, 0.0, 0.0],
-        mu_initial: list = [0.0, 0.0, 0.0],
-        dmudt_initial: list = [0.0, 0.0, 0.0],
+        qc_initial: Optional[list] = None,
+        pc_initial: Optional[list] = None,
+        mu_initial: Optional[list] = None,
+        dmudt_initial: Optional[list] = None,
         record_history: bool = True,
         include_dse: bool = False,
         molecule_half_step: bool = False,
         shift_dipole_baseline: bool = False,
+        gauge="dipole",
     ):
         r"""
         Parameters
@@ -180,6 +199,9 @@ class SingleModeSimulation(DummyEMSimulation):
         shift_dipole_baseline : bool, default: False
             Whether to shift all dipole values using the initial dipole value, so initial dipole value is changed to zero.
             Setting this to True can facilitate simulating strong coupling systems with large permanent dipoles.
+        gauge : str, default: "dipole"
+            Gauge choice for light-matter coupling: "dipole" or "velocity". Using velocity gauge will couple to dmu/dt to cavity momentum
+            instead of mu to the cavity position.
         """
 
         super().__init__(hub=hub, molecules=molecules)
@@ -191,6 +213,10 @@ class SingleModeSimulation(DummyEMSimulation):
         self.damping = float(damping_au)
         self.coupling_strength = float(coupling_strength)
         self.axis = np.array([False, False, False], dtype=bool)
+
+        self.gauge = gauge.lower()
+        if self.gauge not in ["dipole", "velocity"]:
+            raise ValueError("gauge must be either 'dipole' or 'velocity'.")
 
         if "x" in coupling_axis.lower():
             self.axis[0] = True
@@ -240,6 +266,16 @@ class SingleModeSimulation(DummyEMSimulation):
             next_id += 1
 
         self.time = 0.0
+
+        if qc_initial is None:
+            qc_initial = [0.0, 0.0, 0.0]
+        if pc_initial is None:
+            pc_initial = [0.0, 0.0, 0.0]
+        if mu_initial is None:
+            mu_initial = [0.0, 0.0, 0.0]
+        if dmudt_initial is None:
+            dmudt_initial = [0.0, 0.0, 0.0]
+
         self.qc = np.array(qc_initial, dtype=float) * self.axis
         self.pc = np.array(pc_initial, dtype=float) * self.axis
         self.dipole = np.array(mu_initial, dtype=float) * self.axis
@@ -503,12 +539,9 @@ class SingleModeSimulation(DummyEMSimulation):
         # print("In Function, Total Dipole velocity (dmu/dt):", dmudt)
         return dipole, dmudt
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-    def step(self):
+    def _step_dipole_gauge(self):
         """
-        Advance the simulation by one time step.
+        Advance the simulation by one time step under the dipole gauge.
         """
 
         # 1. update momentum to half step
@@ -560,6 +593,26 @@ class SingleModeSimulation(DummyEMSimulation):
                 1.5 * self.dmudt - 0.5 * self.dmudt_prev
             )
             self.energy_history.append(self._calc_energy(self.pc, self.qc, dipole_next))
+
+    def _step_velocity_gauge(self):
+        """
+        Advance the simulation by one time step under the velocity gauge.
+        """
+        pass
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def step(self):
+        """
+        Advance the simulation by one time step.
+        """
+        if self.gauge == "dipole":
+            self._step_dipole_gauge()
+        elif self.gauge == "velocity":
+            self._step_velocity_gauge()
+        else:
+            raise ValueError("gauge must be either 'dipole' or 'velocity'.")
 
     def run(self, until: Optional[float] = None, steps: Optional[int] = None):
         """

@@ -67,6 +67,8 @@ class FixMaxwellLink : public Fix {
    double dt_native_recv = 0.0;    // dt converted to LAMMPS native time units
    int dt_synced = 0;              // 0 until we've applied/broadcast dt
    int prcompute_dipole = 0;       // 1 if we should compute dipole at initial_integrate
+   int reset_dipole = 0;               // 1 if we should reset initial permanent dipole to zero
+   double mu_global_initial[3] = {0.0, 0.0, 0.0}; // initial permanent dipole to subtract if reset_dipole=1
 
    // additional-data in JSON (master only)
    std::string extra_json;
@@ -88,6 +90,7 @@ class FixMaxwellLink : public Fix {
   // void send_amp_vector();      // reply to GETSOURCE with dmu_dt_global (FORCEREADY)
   void send_amp_vector(const std::string& extra_json); // reply with FORCEREADY (+ extra)
   void calc_dipole_info(double *mu, double *dmu_dt, double &ke_au, double &tempK);
+  void calc_initial_dipole_info(double *mu, double *dmu_dt, double &ke_au, double &tempK);
 
   // socket I/O
   void writebuffer(const char *data, int len);

@@ -24,3 +24,4 @@ MEEP FDTD
    :maxdepth: 1
 
    notebook/meep_tls_spontaneous_emission.ipynb
+   notebook/meep_vsc.ipynb

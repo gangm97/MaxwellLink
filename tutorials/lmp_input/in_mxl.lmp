@@ -29,5 +29,5 @@ fix 2 all nve
 
 #dump		1 all xyz 25 dump.xyz
 
-run		80000
+run		100000000
 

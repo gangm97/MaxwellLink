@@ -90,6 +90,9 @@ FixMaxwellLink::FixMaxwellLink(LAMMPS *lmp, int narg, char **arg)
   while (iarg < narg) {
     if (strcmp(arg[iarg], "unix") == 0) {
       inet = 0; ++iarg;
+    } else if (strcmp(arg[iarg], "reset_dipole") == 0) {
+      reset_dipole = 1; ++iarg;
+      printf("[MaxwellLink] Will reset initial permanent dipole to zero.\n");
     } else {
       error->all(FLERR, "Unknown fix MaxwellLink keyword: {}", arg[iarg]);
     }
@@ -547,9 +550,14 @@ void FixMaxwellLink::initial_integrate(int /*vflag*/)
   if (prcompute_dipole == 0) {
       double ke_au = 0.0;
       double tempK = -1.0;
-      calc_dipole_info(mu_global, dmu_dt_global, ke_au, tempK);
+      calc_initial_dipole_info(mu_global, dmu_dt_global, ke_au, tempK);
 
       for (size_t i =0; i < 3; ++i) {
+        if (reset_dipole) {
+          mu_global_initial[i] = mu_global[i];
+          mu_global[i] -= mu_global_initial[i];
+        }
+
         mu_global_prev[i] = mu_global[i];
         dmu_dt_global_prev[i] = dmu_dt_global[i];
       }
@@ -688,6 +696,7 @@ void FixMaxwellLink::calc_dipole_info(double *mu, double *dmu_dt, double &ke_au,
   double **v = atom->v;
   double **x = atom->x;
   double *q  = atom->q;
+  double **f = atom->f;
   int *mask  = atom->mask;
   int nlocal = atom->nlocal;
   int *type  = atom->type;
@@ -700,6 +709,119 @@ void FixMaxwellLink::calc_dipole_info(double *mu, double *dmu_dt, double &ke_au,
 
   double ke_local = 0.0, ke_global = 0.0;
   long   ngrp_local = 0, ngrp_global = 0;
+  double m, vv;
+
+  double vhalf[3] = {0.0, 0.0, 0.0};
+  double xhalf[3] = {0.0, 0.0, 0.0};
+
+  double dtfm;
+  double dtv = 0.5 * update->dt;
+  double dtf = 0.5 * update->dt * force->ftm2v;
+
+  for (int i=0;i<nlocal;i++) {
+    /*
+    if (!(mask[i] & groupbit)) continue;
+    dmu_dt_local[0] += q[i] * (v[i][0] * v_to_au);
+    dmu_dt_local[1] += q[i] * (v[i][1] * v_to_au);
+    dmu_dt_local[2] += q[i] * (v[i][2] * v_to_au);
+
+    domain->unmap(x[i], image[i], unwrap);
+    mu_local[0] += q[i] * (unwrap[0] * x_to_au);
+    mu_local[1] += q[i] * (unwrap[1] * x_to_au);
+    mu_local[2] += q[i] * (unwrap[2] * x_to_au);
+    */
+    
+    // let's do something crazy here: we compute dmudt and mu at half step after this simulation step
+    // to make this happen, we need to propagate v and x by half a step here following standard Velocity-Verlet
+    if (!(mask[i] & groupbit)) continue;
+    m = rmass ? rmass[i] : atom->mass[type[i]];
+    dtfm = dtf / m;
+    vhalf[0] = v[i][0] + dtfm * f[i][0];
+    vhalf[1] = v[i][1] + dtfm * f[i][1];
+    vhalf[2] = v[i][2] + dtfm * f[i][2];
+    dmu_dt_local[0] += q[i] * (vhalf[0] * v_to_au);
+    dmu_dt_local[1] += q[i] * (vhalf[1] * v_to_au);
+    dmu_dt_local[2] += q[i] * (vhalf[2] * v_to_au);
+    xhalf[0] = x[i][0] + dtv * vhalf[0];
+    xhalf[1] = x[i][1] + dtv * vhalf[1];
+    xhalf[2] = x[i][2] + dtv * vhalf[2];
+    domain->unmap(xhalf, image[i], unwrap);
+    mu_local[0] += q[i] * (unwrap[0] * x_to_au);
+    mu_local[1] += q[i] * (unwrap[1] * x_to_au);
+    mu_local[2] += q[i] * (unwrap[2] * x_to_au);
+    
+    //m = rmass ? rmass[i] : atom->mass[type[i]];
+    vv = v[i][0]*v[i][0] + v[i][1]*v[i][1] + v[i][2]*v[i][2];
+    ke_local += 0.5 * m * vv;
+    ngrp_local++;
+  }
+
+  //MPI_Allreduce(dmu_dt_local, dmu_dt_global_tmp, 3, MPI_DOUBLE, MPI_SUM, world);
+  //MPI_Allreduce(mu_local, mu_global_tmp, 3, MPI_DOUBLE, MPI_SUM, world);
+  //MPI_Allreduce(&ke_local, &ke_global, 1, MPI_DOUBLE, MPI_SUM, world);
+  //MPI_Allreduce(&ngrp_local, &ngrp_global, 1, MPI_LONG,   MPI_SUM, world);
+
+  // replace the above four allreduce with a single allreduce
+  double allbuf_global[8];
+  double allbuf[8] = {dmu_dt_local[0], dmu_dt_local[1], dmu_dt_local[2],
+                        mu_local[0],    mu_local[1],    mu_local[2],
+                        ke_local,      (double)ngrp_local};
+  MPI_Allreduce(allbuf, allbuf_global, 8, MPI_DOUBLE, MPI_SUM, world);
+  for (size_t i = 0; i <3; ++i) {
+    dmu_dt_global_tmp[i] = allbuf_global[i];
+    mu_global_tmp[i]     = allbuf_global[i+3];
+  }
+  ke_global = allbuf_global[6];
+  ngrp_global = (long)(allbuf_global[7]);
+  
+  // copy info to output
+  for (size_t i = 0; i < 3; ++i) {
+    dmu_dt[i] = dmu_dt_global_tmp[i];
+    mu[i] = mu_global_tmp[i];
+  }
+  ke_au = ke_global / Eh_native; // convert to a.u.
+
+  const double dof = 3.0 * (double)ngrp_global;
+  tempK = (2.0 * ke_global) / (force->boltz * dof);
+}
+
+
+void FixMaxwellLink::calc_initial_dipole_info(double *mu, double *dmu_dt, double &ke_au, double &tempK) 
+{
+  double dmu_dt_local[3];
+  double mu_local[3];
+  double dmu_dt_global_tmp[3];
+  double mu_global_tmp[3];
+
+  dmu_dt_local[0]=dmu_dt_local[1]=dmu_dt_local[2]=0.0;
+  dmu_dt_global_tmp[0]=dmu_dt_global_tmp[1]=dmu_dt_global_tmp[2]=0.0;
+  mu_local[0]=mu_local[1]=mu_local[2]=0.0;
+  mu_global_tmp[0]=mu_global_tmp[1]=mu_global_tmp[2]=0.0;
+
+  double **v = atom->v;
+  double **x = atom->x;
+  double *q  = atom->q;
+  double **f = atom->f;
+  int *mask  = atom->mask;
+  int nlocal = atom->nlocal;
+  int *type  = atom->type;
+  double *rmass = atom->rmass;
+
+  if (igroup == atom->firstgroup) nlocal = atom->nfirst;
+
+  imageint *image = atom->image;
+  double unwrap[3];
+
+  double ke_local = 0.0, ke_global = 0.0;
+  long   ngrp_local = 0, ngrp_global = 0;
+  double m, vv;
+
+  double vhalf[3] = {0.0, 0.0, 0.0};
+  double xhalf[3] = {0.0, 0.0, 0.0};
+
+  double dtfm;
+  double dtv = 0.5 * update->dt;
+  double dtf = 0.5 * update->dt * force->ftm2v;
 
   for (int i=0;i<nlocal;i++) {
     if (!(mask[i] & groupbit)) continue;
@@ -712,8 +834,8 @@ void FixMaxwellLink::calc_dipole_info(double *mu, double *dmu_dt, double &ke_au,
     mu_local[1] += q[i] * (unwrap[1] * x_to_au);
     mu_local[2] += q[i] * (unwrap[2] * x_to_au);
 
-    const double m = rmass ? rmass[i] : atom->mass[type[i]];
-    const double vv = v[i][0]*v[i][0] + v[i][1]*v[i][1] + v[i][2]*v[i][2];
+    m = rmass ? rmass[i] : atom->mass[type[i]];
+    vv = v[i][0]*v[i][0] + v[i][1]*v[i][1] + v[i][2]*v[i][2];
     ke_local += 0.5 * m * vv;
     ngrp_local++;
   }
@@ -759,12 +881,19 @@ void FixMaxwellLink::end_of_step()
   double tempK = -1.0;
 
   calc_dipole_info(mu_global_midpoint, dmu_dt_global_midpoint, ke_au, tempK);
+  if (reset_dipole) {
+    for (size_t i=0; i < 3; ++i) {
+      mu_global_midpoint[i] -= mu_global_initial[i];
+    }
+  }
 
   // MaxwellLink expects d(mu)/dt and mu at half a time step after E-field (force) evaluation
   for (size_t i = 0; i < 3; ++i) {
-    dmu_dt_global[i] = 2.0 * dmu_dt_global_midpoint[i] - dmu_dt_global_prev[i];
-    mu_global[i] = 2.0 * mu_global_midpoint[i] - mu_global_prev[i];
-  }
+    //dmu_dt_global[i] = 2.0 * dmu_dt_global_midpoint[i] - dmu_dt_global_prev[i];
+    //mu_global[i] = 2.0 * mu_global_midpoint[i] - mu_global_prev[i];
+    dmu_dt_global[i] = dmu_dt_global_midpoint[i];
+    mu_global[i] = mu_global_midpoint[i];
+}
 
 
   double pe_native = modify->compute[modify->find_compute("thermo_pe")]->compute_scalar();
