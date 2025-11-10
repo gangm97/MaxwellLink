@@ -995,6 +995,10 @@ class MeepSimulation(mp.Simulation):
             Passed through to ``meep.Simulation.run`` (e.g., ``until=...``).
         """
 
+        # if **kwargs contains "steps", we need to convert it to "until"
+        if "steps" in kwargs:
+            kwargs["until"] = float(kwargs.pop("steps") * self.dt)
+
         step_funcs = list(user_step_funcs)
         if self.molecules:
             # auto-insert our coupling step first
