@@ -552,9 +552,11 @@ class SingleModeSimulation(DummyEMSimulation):
         self.qc += self.dt * pc_half
 
         # updating E-field at half step using interpolated dipole
-        dipole = self.dipole + 0.5 * self.dt * (
-            1.5 * self.dmudt - 0.5 * self.dmudt_prev
-        )
+        # this interpolation is not very accurate
+        # dipole = self.dipole + 0.5 * self.dt * (1.5 * self.dmudt - 0.5 * self.dmudt_prev)
+        # the following expression is accurate to the order of dt^4
+        dipole = self.dipole_prev + self.dt * (9.0 / 8.0 * self.dmudt + 3.0 / 8.0 * self.dmudt_prev)
+
         efield_vec = self._calc_effective_efield(
             qc_prev + 0.5 * self.dt * pc_half, dipole
         )
@@ -588,11 +590,7 @@ class SingleModeSimulation(DummyEMSimulation):
             self.pc_history.append(self.pc.copy())
             self.drive_history.append(self._evaluate_drive(self.time))
             self.molecule_response_history.append(self.dmudt.copy())
-            # ensure dipole and pc, qc are at the same time step (n+1)
-            dipole_next = self.dipole + 0.5 * self.dt * (
-                1.5 * self.dmudt - 0.5 * self.dmudt_prev
-            )
-            self.energy_history.append(self._calc_energy(self.pc, self.qc, dipole_next))
+            self.energy_history.append(self._calc_energy(self.pc, self.qc, self.dipole))
 
     def _step_velocity_gauge(self):
         """

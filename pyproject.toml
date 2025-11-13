@@ -83,7 +83,7 @@ docs = [
   "nbsphinx>=0.9",
   "nbconvert", 
   "ipykernel",
-  "pandoc>=3.0"                  
+  "pandoc"                  
 ]
 
 [tool.black]

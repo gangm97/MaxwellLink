@@ -22,9 +22,9 @@ velocity all create 300.0 2345187
 #thermo_style	multi
 #thermo		1
 
-fix 1 all mxl PORT_NUMBER 32435 unix
+fix 1 all mxl PORT_NUMBER 32435 unix reset_dipole
 fix 2 all nve
-# fix 3 all langevin 300.0 300.0 10000.0 2345187
+# fix 3 all langevin 300.0 300.0 1000.0 2345187
 
 
 #dump		1 all xyz 25 dump.xyz
