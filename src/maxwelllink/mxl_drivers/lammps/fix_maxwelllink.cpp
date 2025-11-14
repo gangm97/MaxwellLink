@@ -108,6 +108,10 @@ FixMaxwellLink::FixMaxwellLink(LAMMPS *lmp, int narg, char **arg)
   ilevel_respa = 0;
   last_field_timestep = -1;
 
+  // makes sure that neighbor lists are re-built at each step
+  neighbor->delay = 0;
+  neighbor->every = 1;
+
 }
 
 /* ---------------------------------------------------------------------- */
