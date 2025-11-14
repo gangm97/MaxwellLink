@@ -489,19 +489,32 @@ class _ClientState:
     extras: dict = field(default_factory=dict)
 
 
-def get_available_host_port() -> int:
+def get_available_host_port(localhost=True):
     """
     Ask the OS for an available localhost TCP port.
+
+    Parameters
+    ----------
+    localhost : bool, default: True
+        If True, bind to the localhost interface ("127.0.0.1"). If False, bind to all interfaces ("0.0.0.0").
 
     Returns
     -------
     tuple
         ``(host, port)`` pair, e.g., ``("127.0.0.1", 34567)``.
     """
-
+    bind_addr = "127.0.0.1" if localhost else "0.0.0.0"
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return "127.0.0.1", s.getsockname()[1]
+        s.bind((bind_addr, 0))
+        port = s.getsockname()[1]
+    
+    ip = "127.0.0.1"
+    if not localhost:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tmp:
+            tmp.connect(("8.8.8.8", 80))
+            ip = tmp.getsockname()[0]
+            
+    return ip, port 
 
 
 # helper function to determine whether this processor is the MPI master using mpi4py
