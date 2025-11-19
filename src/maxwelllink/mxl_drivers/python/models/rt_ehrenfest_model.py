@@ -78,6 +78,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         homo_to_lumo: bool = False,
         partial_charges: list = None,
         fix_nuclei_indices: list = None,
+        save_xyz: str = None,
     ):
         """
         Initialize the necessary parameters for the RT-TDDFT-Ehrenfest quantum dynamics model.
@@ -141,6 +142,8 @@ class RTEhrenfestModel(RTTDDFTModel):
             Per-atom partial charges for additional external-field forces.
         fix_nuclei_indices : list, optional
             Indices of fixed nuclei during propagation.
+        save_xyz : str, optional
+            Path to save XYZ trajectory during propagation.
         """
 
         super().__init__(
@@ -178,6 +181,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         self.homo_to_lumo = homo_to_lumo
         self.partial_charges = partial_charges
         self.fix_nuclei_indices = fix_nuclei_indices
+        self.save_xyz = save_xyz
 
     # -------------- heavy-load initialization (at INIT) --------------
 
@@ -298,6 +302,9 @@ class RTEhrenfestModel(RTTDDFTModel):
         if self.restart and self.checkpoint:
             self._reset_from_checkpoint(self.molecule_id)
             self.restarted = True
+        
+        if self.save_xyz is not None:
+            self._append_xyz_to_file(filename=self.save_xyz)
 
     # ------------ internal functions -------------
 
@@ -1164,6 +1171,9 @@ class RTEhrenfestModel(RTTDDFTModel):
 
             # store positions
             self.traj_R.append(self.Rk.copy())
+
+            if self.save_xyz is not None:
+                self._append_xyz_to_file(filename=self.save_xyz)
         else:
             self._step_in_cycle = i
 
@@ -1247,6 +1257,9 @@ class RTEhrenfestModel(RTTDDFTModel):
 
             self.traj_R.append(self.Rk.copy())
 
+            if self.save_xyz is not None:
+                self._append_xyz_to_file(filename=self.save_xyz)
+
     def _append_xyz_to_file(self, filename="rt_ehrenfest_traj.xyz"):
         """
         Append the current molecular geometry to an XYZ trajectory file.
@@ -1264,7 +1277,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         nat = self.mol.natom()
         with open(filename, "a") as f:
             f.write(f"{nat}\n")
-            f.write(f"t = {self.t:.6f} au\n")
+            f.write(f"t = {self.t * 2.4188843265857e-2:.6f} fs\n")
             for a in range(nat):
                 sym = self.mol.symbol(a)
                 x, y, z = self.Rk[a] * 0.52917721092  # convert Bohr to Angstrom
