@@ -302,7 +302,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         if self.restart and self.checkpoint:
             self._reset_from_checkpoint(self.molecule_id)
             self.restarted = True
-        
+
         if self.save_xyz is not None:
             self._append_xyz_to_file(filename=self.save_xyz)
 
