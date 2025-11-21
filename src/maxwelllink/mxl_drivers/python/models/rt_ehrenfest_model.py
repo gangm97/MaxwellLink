@@ -1354,6 +1354,7 @@ class RTEhrenfestModel(RTTDDFTModel):
         data = {}
         data["time_au"] = self.t
         data["energy_au"] = self.energies_eh[-1] if len(self.energies_eh) > 0 else 0.0
+        data["energy_kin_au"] = self.kinEnuc
         data["mux_au"] = self.dipoles_eh[-1][0] if len(self.dipoles_eh) > 0 else 0.0
         data["muy_au"] = self.dipoles_eh[-1][1] if len(self.dipoles_eh) > 0 else 0.0
         data["muz_au"] = self.dipoles_eh[-1][2] if len(self.dipoles_eh) > 0 else 0.0

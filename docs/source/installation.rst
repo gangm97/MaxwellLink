@@ -47,8 +47,8 @@ suitable for production simulations. One can install `Meep <https://meep.readthe
    conda install -c conda-forge pymeep="*=mpi_mpich_*"
 
 .. note::
-   Note that it appears that `Meep <https://meep.readthedocs.io/en/latest/>`_  available in conda may not have the optimal MPI performance. Installing `Meep <https://meep.readthedocs.io/en/latest/>`_  from source following the
-   `official instructions <https://meep.readthedocs.io/en/latest/Installation/>`_ may yield better MPI performance for large-scale simulations.
+   Users can also install `Meep <https://meep.readthedocs.io/en/latest/>`_  from source following the
+   `official instructions <https://meep.readthedocs.io/en/latest/Installation/>`_.
 
 Optional driver dependencies
 ----------------------------
