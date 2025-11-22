@@ -166,7 +166,7 @@ class TLSModel(DummyModel):
 
         if self.verbose:
             print(
-                f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving effective_efield_vec: {effective_efield_vec[2]:.6E}"
+                f"[molecule ID {self.molecule_id}] Time: {self.t:.4f} a.u., receiving effective_efield_vec: {effective_efield_vec}"
             )
         int_ep = effective_efield_vec[self.orientation_idx] * self.dipole_moment
 
