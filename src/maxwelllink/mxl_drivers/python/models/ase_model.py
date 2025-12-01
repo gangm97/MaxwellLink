@@ -366,6 +366,7 @@ class ForceAugmenter(Calculator):
 
             # Update caches
             self._cache_key = key_now
+            self.results["energy"] = float(self.base.results["energy"])
             self._cache_energy = self.results.get("energy", None)
             self._cache_forces = f.copy()
 
@@ -577,7 +578,7 @@ class ASEModel(DummyModel):
 
         if self.verbose:
             print(
-                f"[ASEModel {self.molecule_id}] t={self.t:.6f} a.u., E={self.E_vec[2]:.10e} a.u."
+                f"[ASEModel {self.molecule_id}] t={self.t:.6f} a.u., Efield={self.E_vec} a.u."
             )
 
         self.forcewrap.set_field_au(self.E_vec)
@@ -600,8 +601,8 @@ class ASEModel(DummyModel):
 
         if self.verbose:
             print(
-                f"[ASEModel {self.molecule_id}] t={self.t:.6e} au, E_au={self.forcewrap._E_au[2]:.10e} a.u.,"
-                f"q={self._charges}, v_angs_per_fs={self._vel_angs_per_fs}"
+                f"[ASEModel {self.molecule_id}] t={self.t:.6e} au, Efield_au={self.forcewrap._E_au} a.u.,"
+                f"q={self._charges}, v_angs_per_fs={self._vel_angs_per_fs}, energy_au={self.forcewrap._cache_energy} a.u."
             )
 
         # advance model time in a.u.
@@ -656,16 +657,16 @@ class ASEModel(DummyModel):
         # However, with velocity verlet, if E-field is sent at time step n, then both velocity and position are updated to step n
         # at the final stage of velocity verlet. Therefore, we need to do a simple linear extrapolation here to get dipole at time step n+1/2.
         self.dipole_prev = (
-            self.dipole_projected.copy()
+            self.dipole_projected.copy().reshape(-1)
             if self.dipole_projected is not None
-            else self.forcewrap._cache_dipole_vec.copy()
+            else self.forcewrap._cache_dipole_vec.copy().reshape(-1)
         )
-        self.dipole_middlepoint = self.forcewrap._cache_dipole_vec.copy()
+        self.dipole_middlepoint = self.forcewrap._cache_dipole_vec.copy().reshape(-1)
         self.dipole_projected = 2.0 * self.dipole_middlepoint - self.dipole_prev
 
         d = {
             "time_au": float(self.t),
-            "energy_au": float(self.forcewrap._cache_energy),
+            "energy_au": float(self.forcewrap._cache_energy if self.forcewrap._cache_energy is not None else 0.0),
             "mux_au": float(self.dipole_projected[0]),
             "muy_au": float(self.dipole_projected[1]),
             "muz_au": float(self.dipole_projected[2]),
