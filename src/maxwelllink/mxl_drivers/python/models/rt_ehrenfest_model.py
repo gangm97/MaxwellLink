@@ -183,6 +183,14 @@ class RTEhrenfestModel(RTTDDFTModel):
         self.fix_nuclei_indices = fix_nuclei_indices
         self.save_xyz = save_xyz
 
+        # dipole and dmudt info in previous time steps
+        self.dipole_prev = None
+        self.dmudt_prev = None
+        self.dipole_middlepoint = None
+        self.dmudt_middlepoint = None
+        self.dipole_projected = None
+        self.dmudt_projected = None
+
     # -------------- heavy-load initialization (at INIT) --------------
 
     def initialize(self, dt_new, molecule_id):
@@ -1337,6 +1345,23 @@ class RTEhrenfestModel(RTTDDFTModel):
         # electronic contribution to dipole moment time derivative
         amp_e = super().calc_amp_vector()
         amp_total = amp_e + amp_n
+
+        # now here is the issue: if we are at the electronic regime, amp_e is important, which is evaluated at 
+        # time step t + dt_e/2, where t is the time for the E-field amplitude. This scheme agrees with FDTD time stepping.
+        # However, if we are at the nuclear regime, amp_n is important, which is evaluated at time step t (E-field time), and we 
+        # would expect amp_e/amp_n to be evaluated at time step t + dt_N/2. This inconsistency may lead to some issues when coupling with FDTD.
+
+        # so we need to provide a better amp_total evaluation scheme when at nuclear regime
+        if self.em_coupling_regime == "nuclear":
+            self.dmudt_prev = (
+                self.dmudt_projected.copy()
+                if self.dmudt_projected is not None
+                else amp_total.copy()
+            )
+            self.dmudt_middlepoint = amp_total.copy()
+            self.dmudt_projected = 2.0 * self.dmudt_middlepoint - self.dmudt_prev
+            amp_total = self.dmudt_projected
+        
         return amp_total
 
     # ------------ optional operation / checkpoint --------------
@@ -1358,6 +1383,30 @@ class RTEhrenfestModel(RTTDDFTModel):
         data["mux_au"] = self.dipoles_eh[-1][0] if len(self.dipoles_eh) > 0 else 0.0
         data["muy_au"] = self.dipoles_eh[-1][1] if len(self.dipoles_eh) > 0 else 0.0
         data["muz_au"] = self.dipoles_eh[-1][2] if len(self.dipoles_eh) > 0 else 0.0
+        data["mux_m_au"] = data["mux_au"]
+        data["muy_m_au"] = data["muy_au"]
+        data["muz_m_au"] = data["muz_au"]
+
+        # now here is the issue: if we are at the electronic regime, dipole is evaluated at 
+        # time step t + dt_e/2, where t is the time for the E-field amplitude. This scheme agrees with FDTD time stepping.
+        # However, if we are at the nuclear regime, dipole is evaluated at time step t (E-field time), and we 
+        # would expect dipole to be evaluated at time step t + dt_N/2. This inconsistency may lead to some issues when coupling with FDTD.
+        if self.em_coupling_regime == "nuclear":
+            self.dipole_prev = (
+                self.dipole_projected.copy()
+                if self.dipole_projected is not None
+                else self.dipoles_eh[-1].copy()
+                )
+            self.dipole_middlepoint = self.dipoles_eh[-1].copy()
+            self.dipole_projected = 2.0 * self.dipole_middlepoint - self.dipole_prev
+            # augment data with projected dipole
+            data["mux_au"] = float(self.dipole_projected[0])
+            data["muy_au"] = float(self.dipole_projected[1])
+            data["muz_au"] = float(self.dipole_projected[2])
+            data["mux_m_au"] = float(self.dipole_middlepoint[0])
+            data["muy_m_au"] = float(self.dipole_middlepoint[1])
+            data["muz_m_au"] = float(self.dipole_middlepoint[2])
+        
         return data
 
     def _dump_to_checkpoint(self):
