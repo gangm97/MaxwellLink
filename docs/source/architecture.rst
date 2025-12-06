@@ -114,7 +114,7 @@ the LAMMPS binary with **MaxwellLink** support.
 Please read :doc:`drivers/index` section for detailed definitions of different molecular drivers.
 
 MPI Parallelism
--------------
+--------------- 
 
 EM solvers, such as `Meep <https://meep.readthedocs.io/en/latest/>`_ FDTD, can be launched under MPI. **MaxwellLink** is compatible with MPI, 
 allowing for distributed simulations. Only the master

@@ -51,7 +51,7 @@ jobs:
 
       - name: Build HTML
         run: |
-          sphinx-build -b html docs/source docs/build/html
+          sphinx-build -b html -d docs/build/doctrees docs/source docs/build/html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
