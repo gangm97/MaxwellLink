@@ -154,6 +154,64 @@ Driver command (run on the remote node):
 Replace ``<meep-hostname>`` with the reachable address of the `Meep <https://meep.readthedocs.io/en/latest/>`_ node. Open
 firewall ports if required by your cluster configuration.
 
+
+Distributed run in HPC (TCP socket)
+------------------------------------
+
+For HPC users, if the EM solver and molecular driver run on separate nodes of a SLURM HPC system, the MaxwellLink
+job can be submitted as a two-step dependent SLRUM job as follows:
+
+.. code-block:: bash
+
+    job_main_id=$(sbatch submit_main.sh | awk '{print $4}')
+    sbatch --dependency=after:${job_main_id} submit_driver.sh
+
+Here, two SLURM submission scripts
+(``submit_main.sh`` and ``submit_driver.sh``) launch the EM solver main process and the driver process, respectively.
+
+In the ``submit_main.sh`` bash script, the main MaxwellLink Python input (say, ``em_run.py``) contains the 
+following code to automatically find an available host and port for the TCP socket hub: 
+
+.. code-block:: python
+
+    import maxwelllink as mxl
+    from maxwelllink import sockets as mxs
+    host, port = mxs.get_available_host_port(localhost=False, save_to_file="tcp_host_port_info.txt")
+    # time out for HPC environments may need to be relatively long
+    hub = mxl.SocketHub(host=host, port=port, timeout=200.0, latency=1e-4)
+
+The available host and port will be saved to a text file (``tcp_host_port_info.txt`` here) 
+that can be read by the driver.
+
+In the ``submit_driver.sh`` bash script, the driver can read the host and port information from the text file and connect to the hub as follows:
+
+.. code-block:: bash
+
+    # wait for the main job to start and write the host and port info
+    sleep 10s
+
+    HOST_PORT_FILE="tcp_host_port_info.txt"
+    if [[ ! -f "$HOST_PORT_FILE" ]]; then
+        echo "Error: Host and port info file '$HOST_PORT_FILE' not found!"
+        exit 1
+    fi
+    HOST=$(sed -n '1p' "$HOST_PORT_FILE")
+    PORT=$(sed -n '2p' "$HOST_PORT_FILE")
+
+    mxl_driver --model tls --address $HOST --port $PORT --param "..."
+
+Then, only after the main job starts and writes the host and port information to the text file, the 
+driver job will be submitted and started to connect to the hub. 
+
+For large-scale simulations, multiple drivers can be launched on different nodes. For example, the following
+input bash script launches one main job and two driver jobs. The two driver jobs will start only after the main job starts.
+
+.. code-block:: bash
+
+    job_main_id=$(sbatch submit_main.sh | awk '{print $4}')
+    sbatch --dependency=after:${job_main_id} submit_driver.sh
+    sbatch --dependency=after:${job_main_id} submit_driver.sh
+
 Inspecting TLS output
 ---------------------
 
