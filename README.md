@@ -15,7 +15,9 @@
   <img src="https://img.shields.io/badge/python-3.9%2B-brightgreen.svg" alt="Python versions">
 </p>
 
-**MaxwellLink** is a free and open-source framework for self-consistent light–matter simulations. It bridges electromagnetic solvers, such as [MEEP FDTD](https://meep.readthedocs.io/en/latest/) or the built-in single-mode cavity, with heterogeneous molecular drivers spanning from multilevel open quantum systems, force-field molecular mechanics, and (nonadiabatic) first-principles molecular dynamics. This code can be used for both demonstrative and production calculation purposes. Particularly, with a socket-based architecture, large-scale self-consistent light-matter simulations can be performed efficiently accross multiple HPC nodes.
+**MaxwellLink** is a free and open-source framework for self-consistent light–matter simulations. It bridges electromagnetic solvers, such as [MEEP FDTD](https://meep.readthedocs.io/en/latest/) or the built-in single-mode cavity, with heterogeneous molecular drivers spanning from multilevel open quantum systems, force-field molecular mechanics, and (nonadiabatic) first-principles molecular dynamics. 
+
+This code can be used for both demonstrative and production calculation purposes. Particularly, with a socket-based architecture, large-scale self-consistent light-matter simulations can be performed efficiently accross multiple HPC nodes.
 
 ## Key Features
 
