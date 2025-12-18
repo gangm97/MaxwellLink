@@ -1,10 +1,9 @@
 Tutorials
 =========
 
-**MaxwellLink**'s official tutorials are Jupyter notebooks rendered through
-``nbsphinx``. They cover various light-matter coupling scenarios using different
+**MaxwellLink**'s official tutorials involves the use of different
 EM solvers and molecular drivers. The sections below group tutorials by the
-electromagnetic solver they employ.
+employed electromagnetic solver.
 
 Single-Mode Cavity
 ------------------
