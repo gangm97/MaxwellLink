@@ -56,6 +56,7 @@ class Molecule:
         driver_kwargs: Optional[Dict] = None,
         rescaling_factor: float = 1.0,
         store_additional_data: bool = True,
+        polarization_type: Optional[str] = None,
     ):
         """
         Parameters
@@ -82,6 +83,8 @@ class Molecule:
             Rescaling factor for polarization.
         store_additional_data : bool, default: True
             Whether to store additional data history as a growing list (if True) or only keep the latest five frames (if False).
+        polarization_type : str or None, optional
+            Type of polarization to use in EM FDTD propagation.
 
         Raises
         ------
@@ -114,7 +117,7 @@ class Molecule:
         # if resolution is provided, we also compute dx and dt
         self.dx = 1.0 / resolution if resolution is not None else 0.0
         self.dt = 0.5 / resolution if resolution is not None else 0.0
-
+        self.polarization_type = polarization_type.lower() if polarization_type else "analytical"
         # reserve for sources and additional data history
         self.sources = []
         self.additional_data_history = []
@@ -138,6 +141,7 @@ class Molecule:
             "size": [self.size.x, self.size.y, self.size.z],
             "rescaling_factor": self.rescaling_factor,
             "center": [self.center.x, self.center.y, self.center.z],
+            "polarization_type": self.polarization_type,
         }
         self.polarization_fingerprint_hash = hash(
             json.dumps(self.polarization_fingerprint)

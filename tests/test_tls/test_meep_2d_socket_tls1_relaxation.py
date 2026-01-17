@@ -215,6 +215,9 @@ def test_2d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
             size=mp.Vector3(1, 1, 1),
             sigma=0.1,
             dimensions=2,
+            # let's update to the new polarization_type API with numerical amp_data in defining sources
+            resolution=resolution,
+            polarization_type="numerical",
         )
 
         sim = mxl.MeepSimulation(

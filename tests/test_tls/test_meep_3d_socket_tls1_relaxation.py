@@ -319,7 +319,7 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket_qutip(plotting=False):
 
 
 @pytest.mark.core
-def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
+def test_3d_2tls_relaxation_matches_analytical_via_socket_v2(polarization_style="analytical", plotting=False):
     """
     End-to-end (socket) TLS relaxation test.
 
@@ -358,6 +358,8 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
             size=mp.Vector3(1, 1, 1),
             sigma=0.1,
             dimensions=3,
+            resolution=resolution,
+            polarization_type=polarization_style,
         )
 
         sim = mxl.MeepSimulation(
@@ -406,7 +408,6 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
             # Analytical golden-rule rate in 3D
             print("dipole moment", dipole_moment)
             gamma = dipole_moment**2 * (frequency) ** 3 / 3.0 / np.pi
-            print("gamma", gamma)
             population_analytical = population[0] * np.exp(-time_meep_units * gamma)
             # this form is correct for all times [see https://journals.aps.org/pra/pdf/10.1103/PhysRevA.97.032105 Eq. A13]
             population_analytical = np.exp(-time_meep_units * gamma) / (
@@ -422,8 +423,8 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
             if plotting:
                 import matplotlib.pyplot as plt
 
-                plt.plot(time_meep_units, population, label="meep+socket")
-                plt.plot(time_meep_units, population_analytical, label="analytical")
+                plt.plot(time_meep_units, population, "r-.", label="meep+socket")
+                plt.plot(time_meep_units, population_analytical, "k-", label="analytical")
                 plt.xlabel("time (meep units)")
                 plt.ylabel("excited population")
                 plt.legend()
@@ -448,5 +449,5 @@ def test_3d_1tls_relaxation_matches_analytical_via_socket_v2(plotting=False):
 
 
 if __name__ == "__main__":
-    test_3d_1tls_relaxation_matches_analytical_via_socket_qutip(plotting=True)
-    test_3d_1tls_relaxation_matches_analytical_via_socket(plotting=True)
+    # test_3d_1tls_relaxation_matches_analytical_via_socket_qutip(plotting=True)
+    test_3d_2tls_relaxation_matches_analytical_via_socket_v2(plotting=True, polarization_style="transverse")

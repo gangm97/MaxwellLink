@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import numpy as np
 from math import exp
+import math
 from typing import Optional, Dict, List
 import atexit
 
@@ -16,6 +17,7 @@ from ..sockets import SocketHub
 from .dummy_em import DummyEMUnits, MoleculeDummyWrapper
 from ..molecule import Molecule, Vector3
 from ..units import EV_TO_CM_INV, FS_TO_AU
+from maxwelllink.tools import calc_transverse_components_3d
 
 try:
     import meep as mp
@@ -280,6 +282,12 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
         self.init_payload = self.m.init_payload
         self.sources = self.m.sources
         self.dt_au = self.m.dt_au
+        self.polarization_type = self.m.polarization_type
+
+        # if polarization_type is "numerical" or "transverse", self.m.resolution must be set to a positive number
+        if self.polarization_type in ["numerical", "transverse"]:
+            if not hasattr(self.m, 'resolution') or self.m.resolution is None or self.m.resolution <=0:
+                raise ValueError("For numerical or transverse polarization_type, the molecular resolution must be set to a positive number indicating the Meep simulation resolution.")
 
         self._polarization_prefactor_3d = (
             1.0 / (2.0 * np.pi) ** 1.5 / self.sigma**5 * self.rescaling_factor
@@ -294,6 +302,28 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
     def _init_sources(self):
         """
         Construct Meep sources for the molecule's polarization kernel (1D/2D/3D).
+
+        Notes
+        -----
+        Sources are memoized per polarization fingerprint and component to allow
+        sharing across molecules with identical spatial kernels.
+        """
+        if self.polarization_type == "analytical":
+            self._init_sources_gaussian_analytical()
+        elif self.polarization_type == "numerical":
+            self._init_sources_gaussian_numerical()
+        elif self.polarization_type == "transverse":
+            self._init_sources_transverse()
+        else:
+            raise ValueError(
+                f"Unsupported polarization_type '{self.polarization_type}' for Meep molecule."
+            )
+
+
+    def _init_sources_gaussian_analytical(self):
+        """
+        Construct Meep sources for the molecule's polarization kernel (1D/2D/3D)
+        using analytical Gaussian functions.
 
         Notes
         -----
@@ -383,9 +413,247 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
 
         self.sources = srcs
 
+    def _init_sources_gaussian_numerical(self):
+        """
+        Construct Meep sources for the molecule's polarization kernel (1D/2D/3D)
+        using numerical Gaussian functions ()
+
+        Notes
+        -----
+        Sources are memoized per polarization fingerprint and component to allow
+        sharing across molecules with identical spatial kernels.
+        """
+
+        srcs = []
+        center = _to_mp_v3(self.center)
+        size = _to_mp_v3(self.size)
+        dx = 1.0 / self.m.resolution
+
+        if self.dimensions == 1:
+            key = (self.polarization_fingerprint_hash, "Ez")
+            if key not in _fingerprint_source:
+
+                # create polarization amp data numerically
+                X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                amp_data = self._polarization_prefactor_1d * np.exp(
+                                -(X**2) / (2.0 * self.sigma**2) )
+                amp_data = amp_data.reshape((-1, 1, 1))
+                amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                instantaneous_source_amplitudes[key] = 0.0
+                _fingerprint_source[key] = mp.Source(
+                    src=_make_custom_time_src(key),
+                    component=mp.Ez,
+                    center=center,
+                    size=size,
+                    amplitude=1.0,
+                    amp_data=amp_data,
+                )
+            srcs.append(_fingerprint_source[key])
+        elif self.dimensions == 2:
+            key = (self.polarization_fingerprint_hash, "Ez")
+            if key not in _fingerprint_source:
+
+                # create polarization amp data numerically
+                X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                Y = np.arange(-self.size.y / 2, self.size.y / 2, dx)
+                XX, YY = np.meshgrid(X, Y, indexing='ij')
+                amp_data = self._polarization_prefactor_2d * np.exp(
+                    -(XX**2 + YY**2) / (2.0 * self.sigma**2) )
+                shape = amp_data.shape
+                amp_data = amp_data.reshape((shape[0], shape[1], 1))
+                amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                instantaneous_source_amplitudes[key] = 0.0
+                _fingerprint_source[key] = mp.Source(
+                    src=_make_custom_time_src(key),
+                    component=mp.Ez,
+                    center=center,
+                    size=size,
+                    amplitude=1.0,
+                    amp_data=amp_data,
+                )
+            srcs.append(_fingerprint_source[key])
+        else:  # 3D
+            for comp, tag in (
+                (mp.Ex, "Ex"),
+                (mp.Ey, "Ey"),
+                (mp.Ez, "Ez"),
+            ):
+                key = (self.polarization_fingerprint_hash, tag)
+                if key not in _fingerprint_source:
+                    # create polarization amp data numerically
+                    X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                    Y = np.arange(-self.size.y / 2, self.size.y / 2, dx)
+                    Z = np.arange(-self.size.z / 2, self.size.z / 2, dx)
+
+                    XX, YY, ZZ = np.meshgrid(X, Y, Z, indexing='ij')
+                    if tag == "Ex":
+                        amp_data = self._polarization_prefactor_3d * XX**2 * np.exp(
+                            -(XX**2 + YY**2 + ZZ**2) / (2.0 * self.sigma**2) )
+                    elif tag == "Ey":
+                        amp_data = self._polarization_prefactor_3d * YY**2 * np.exp(
+                            -(XX**2 + YY**2 + ZZ**2) / (2.0 * self.sigma**2) )
+                    else: 
+                        amp_data = self._polarization_prefactor_3d * ZZ**2 * np.exp(
+                            -(XX**2 + YY**2 + ZZ**2) / (2.0 * self.sigma**2) )
+                        
+                    amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                    instantaneous_source_amplitudes[key] = 0.0
+                    _fingerprint_source[key] = mp.Source(
+                        src=_make_custom_time_src(key),
+                        component=comp,
+                        center=center,
+                        size=size,
+                        amplitude=1.0,
+                        amp_data=amp_data,
+                    )
+                srcs.append(_fingerprint_source[key])
+
+        self.sources = srcs
+
+    def _init_sources_transverse(self):
+        """
+        Construct Meep sources for the molecule's polarization kernel (1D/2D/3D)
+        using transverse numerical Gaussian functions evaluated by FFT.
+
+        Notes
+        -----
+        Sources are memoized per polarization fingerprint and component to allow
+        sharing across molecules with identical spatial kernels.
+        """
+
+        srcs = []
+        center = _to_mp_v3(self.center)
+        size = _to_mp_v3(self.size)
+        dx = 1.0 / self.m.resolution
+
+        if self.dimensions == 1 or self.dimensions == 2:
+            raise ValueError("Transverse polarization_type is currently only supported in 3D simulations.")
+
+        if self.dimensions == 1:
+            key = (self.polarization_fingerprint_hash, "Ez")
+            if key not in _fingerprint_source:
+
+                # create polarization amp data numerically
+                X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                amp_data = self._polarization_prefactor_1d * np.exp(
+                                -(X**2) / (2.0 * self.sigma**2) )
+                amp_data = amp_data.reshape((-1, 1, 1))
+                amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                instantaneous_source_amplitudes[key] = 0.0
+                _fingerprint_source[key] = mp.Source(
+                    src=_make_custom_time_src(key),
+                    component=mp.Ez,
+                    center=center,
+                    size=size,
+                    amplitude=1.0,
+                    amp_data=amp_data,
+                )
+            srcs.append(_fingerprint_source[key])
+        elif self.dimensions == 2:
+            key = (self.polarization_fingerprint_hash, "Ez")
+            if key not in _fingerprint_source:
+
+                # create polarization amp data numerically
+                X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                Y = np.arange(-self.size.y / 2, self.size.y / 2, dx)
+                XX, YY = np.meshgrid(X, Y, indexing='ij')
+                amp_data = self._polarization_prefactor_2d * np.exp(
+                    -(XX**2 + YY**2) / (2.0 * self.sigma**2) )
+                shape = amp_data.shape
+                amp_data = amp_data.reshape((shape[0], shape[1], 1))
+                amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                instantaneous_source_amplitudes[key] = 0.0
+                _fingerprint_source[key] = mp.Source(
+                    src=_make_custom_time_src(key),
+                    component=mp.Ez,
+                    center=center,
+                    size=size,
+                    amplitude=1.0,
+                    amp_data=amp_data,
+                )
+            srcs.append(_fingerprint_source[key])
+        else:  # 3D
+            for comp, tag in (
+                (mp.Ex, "Ex"),
+                (mp.Ey, "Ey"),
+                (mp.Ez, "Ez"),
+            ):
+                key = (self.polarization_fingerprint_hash, tag)
+                if key not in _fingerprint_source:
+                    # create polarization amp data numerically
+                    X = np.arange(-self.size.x / 2, self.size.x / 2, dx)
+                    Y = np.arange(-self.size.y / 2, self.size.y / 2, dx)
+                    Z = np.arange(-self.size.z / 2, self.size.z / 2, dx)
+
+                    XX, YY, ZZ = np.meshgrid(X, Y, Z, indexing='ij')
+
+                    if tag == "Ex":
+                        _, px_t, py_t, pz_t = calc_transverse_components_3d(size=(self.size.x, self.size.y, self.size.z),
+                                                                   dx=dx, sigma=self.sigma,
+                                                                   mu12=self.rescaling_factor,
+                                                                   local_size=self.size.x*30,
+                                                                   component="x")
+                        
+                        amp_data = px_t + py_t + pz_t
+                    elif tag == "Ey":
+                        _, px_t, py_t, pz_t = calc_transverse_components_3d(size=(self.size.x, self.size.y, self.size.z),
+                                                                   dx=dx, sigma=self.sigma,
+                                                                   mu12=self.rescaling_factor,
+                                                                   local_size=self.size.x*30,
+                                                                   component="y")
+                        
+                        amp_data = px_t + py_t + pz_t
+                    else: 
+                        _, px_t, py_t, pz_t = calc_transverse_components_3d(size=(self.size.x, self.size.y, self.size.z),
+                                                                   dx=dx, sigma=self.sigma,
+                                                                   mu12=self.rescaling_factor,
+                                                                   local_size=self.size.x*30,
+                                                                   component="z")
+                        
+                        amp_data = px_t + py_t + pz_t
+                        
+                    amp_data = np.copy(amp_data.astype(np.complex128), order='C')
+
+                    instantaneous_source_amplitudes[key] = 0.0
+                    _fingerprint_source[key] = mp.Source(
+                        src=_make_custom_time_src(key),
+                        component=comp,
+                        center=center,
+                        size=size,
+                        amplitude=1.0,
+                        amp_data=amp_data,
+                    )
+                srcs.append(_fingerprint_source[key])
+
+        self.sources = srcs
+
+
     def _calculate_ep_integral(self, sim: mp.Simulation):
         """
         Compute the regularized E-field integral over the molecule's kernel.
+
+        Parameters
+        ----------
+        sim : meep.Simulation
+            Active Meep simulation.
+
+        Returns
+        -------
+        list of float
+            Regularized field integrals ``[I_x, I_y, I_z]`` in Meep units.
+        """
+        return self._calculate_ep_integral_gaussian_analytical(sim)
+
+
+    def _calculate_ep_integral_gaussian_analytical(self, sim: mp.Simulation):
+        """
+        Compute the regularized E-field integral over the molecule's kernel
+        using analytical Gaussian functions.
 
         Parameters
         ----------
@@ -475,7 +743,6 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
                 vol,
             )
         return [np.real(x), np.real(y), np.real(z)]
-
 
 # ---------- NON-SOCKET Step Function for MEEP ----------
 def update_molecules_no_socket(
