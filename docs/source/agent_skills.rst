@@ -1,6 +1,18 @@
 Agent Skills
 ============
 
+This feature requires to clone the MaxwellLink Github repository to access the skills folder. First, either in your local machines or HPC clusters, clone the repository and install **MaxwellLink**:
+
+.. code-block:: bash
+
+   git clone https://github.com/TaoELi/MaxwellLink.git
+   cd MaxwellLink
+   pip install .
+
+Then, follow :doc:`installation` to install the third-party EM solver (MEEP FDTD) and molecular drivers.
+
+After installation, you can use MaxwellLink's agent skills to scaffold and run light-matter simulations automatically.
+
 Automatic light-matter simulations on local machines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
