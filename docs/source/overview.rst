@@ -26,6 +26,7 @@ overview of the code structure, design principles, and how to extend the framewo
    introduction
    installation
    usage
+   agent_skills
 
 .. toctree::
    :maxdepth: 1
@@ -40,7 +41,6 @@ overview of the code structure, design principles, and how to extend the framewo
    architecture
    em_solvers/index
    drivers/index
-   agent_skills
    contributing
 
 .. toctree::

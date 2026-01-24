@@ -61,16 +61,17 @@ Learning path
 
 1. :doc:`installation` walks through the recommended conda environment and
    optional driver dependencies.
-2. :doc:`usage` shows how to launch a `Meep <https://meep.readthedocs.io/en/latest/>`_ simulation, connect a TLS driver, and
+2. :doc:`agent_skills` provides a simple way to get started with **MaxwellLink** using natural language prompts.
+3. :doc:`usage` shows how to launch a `Meep <https://meep.readthedocs.io/en/latest/>`_ simulation, connect a TLS driver, and
    inspect the returned molecular data.
-3. :doc:`tutorials/index` provides hands-on tutorials regarding setting up and using
+4. :doc:`tutorials/index` provides hands-on tutorials regarding setting up and using
    **MaxwellLink** with different EM solvers and drivers.
-4. :doc:`architecture` explains the socket protocol, molecular wrappers, and how
+5. :doc:`architecture` explains the socket protocol, molecular wrappers, and how
    **MaxwellLink** keeps the EM solver and drivers synchronized.
-5. :doc:`em_solvers/index` documents all shipped EM solvers, their required
+6. :doc:`em_solvers/index` documents all shipped EM solvers, their required
    parameters, and expected outputs.
-6. :doc:`drivers/index` documents all shipped molecular drivers, their required
+7. :doc:`drivers/index` documents all shipped molecular drivers, their required
    parameters, and expected outputs.
-7. :doc:`contributing` guides users on how to implement custom EM solvers
+8. :doc:`contributing` guides users on how to implement custom EM solvers
    and molecular drivers to extend the **MaxwellLink** framework.
-8. :doc:`api/modules` lists the complete API reference for all **MaxwellLink** classes and functions.
+9. :doc:`api/modules` lists the complete API reference for all **MaxwellLink** classes and functions.

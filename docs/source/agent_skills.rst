@@ -1,6 +1,11 @@
 Agent Skills
 ============
 
+Agent Skills for **MaxwellLink** provide a simple way to get started with this code. Using natural language prompts, users can easily create the input files and run jobs in both local machines and HPC systems. Users can then inspect the input files and modify them as needed for more customized simulations.
+
+Prerequisites
+~~~~~~~~~~~~~~
+
 This feature requires to clone the MaxwellLink Github repository to access the skills folder. First, either in your local machines or HPC clusters, clone the repository and install **MaxwellLink**:
 
 .. code-block:: bash
@@ -24,8 +29,8 @@ To use MaxwellLink's agent skills on your local machine via VS Code and the Code
 
 1. Open VS Code -> ``File`` -> ``Open Folder...`` -> select ``path/to/MaxwellLink``.
 2. Install/enable the **Codex** extension (from Marketplace). Make sure the extension has access to the workspace.
-3. Open the Codex chat panel (usually the side activity bar) and say what you want, e.g. "Use the MaxwellLink skills to scaffold a Meep + TLS socket job." The agent will load the relevant skills at ``skills/``.
-4. When prompted, let the agent run the suggested terminal commands in VS Code's integrated terminal; it will create ``projects/YYYY-MM-DD-<name>/`` and fill template files.
+3. Open the Codex chat panel (usually the side activity bar) and provide your prompt. The agent will load the relevant skills at ``skills/`` and try to accomplish your request.
+4. When prompted, let the agent run the suggested terminal commands in VS Code's integrated terminal; it will create ``projects/YYYY-MM-DD-<name>/`` and create input files for **MaxwellLink**.
 
 The above video tutorial uses the following input prompt:
 
