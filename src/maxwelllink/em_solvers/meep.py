@@ -284,14 +284,14 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
         self.polarization_type = self.m.polarization_type
 
         # if polarization_type is "numerical" or "transverse", self.m.resolution must be set to a positive number
-        if self.polarization_type in ["numerical", "transverse", "point"]:
+        if self.polarization_type in ["numerical", "transverse", "point", "point-raw"]:
             if (
                 not hasattr(self.m, "resolution")
                 or self.m.resolution is None
                 or self.m.resolution <= 0
             ):
                 raise ValueError(
-                    "For numerical, transverse, or point polarization_type, the molecular resolution must be set to a positive number indicating the Meep simulation resolution."
+                    "For numerical, transverse, point, or point-raw polarization_type, the molecular resolution must be set to a positive number indicating the Meep simulation resolution."
                 )
         if self.polarization_type == "anisotropic":
             if not isinstance(self.sigma, (list, tuple)) or len(self.sigma) != 3:
@@ -300,7 +300,7 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
                 )
             self.sigma = np.array(self.sigma, dtype=float)
 
-        if self.polarization_type == "point":
+        if self.polarization_type == "point" or self.polarization_type == "point-raw":
             print(
                 "###! Point dipole polarization_type yields very fluctuating spontaneous emission decay in 3D only !###",
                 "###! Please consider using 'analytical', 'numerical' or 'transverse' polarization_type with a small sigma instead. !###",
@@ -351,7 +351,7 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
             self._init_sources_gaussian_numerical()
         elif self.polarization_type == "transverse":
             self._init_sources_transverse()
-        elif self.polarization_type == "point":
+        elif self.polarization_type == "point" or self.polarization_type == "point-raw":
             self._init_sources_point()
         elif self.polarization_type == "anisotropic":
             self._init_sources_anisotropic_analytical()
@@ -860,6 +860,8 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
             return self._calculate_ep_integral_gaussian_analytical(sim)
         elif self.polarization_type == "point":
             return self._calculate_ep_integral_point(sim)
+        elif self.polarization_type == "point-raw":
+            return self._calculate_ep_integral_point_raw(sim)
         elif self.polarization_type == "anisotropic":
             return self._calculate_ep_integral_anisotropic_analytical(sim)
         else:
@@ -1003,6 +1005,43 @@ class MoleculeMeepWrapper(MoleculeDummyWrapper):
             z = self.rescaling_factor * ez * dx**3
         return [np.real(x), np.real(y), np.real(z)]
 
+    def _calculate_ep_integral_point_raw(self, sim: mp.Simulation):
+        """
+        Compute the regularized E-field integral over the molecule's kernel
+        using point dipole approximation with no sub-averaging over dx^3.
+
+        Parameters
+        ----------
+        sim : meep.Simulation
+            Active Meep simulation.
+
+        Returns
+        -------
+        list of float
+            Regularized field integrals ``[I_x, I_y, I_z]`` in Meep units.
+        """
+
+        dx = 1.0 / self.m.resolution
+
+        vol = mp.Volume(size=_to_mp_v3(self.size), center=_to_mp_v3(self.center))
+        x = y = z = 0.0
+        if self.dimensions == 1:
+            vol = mp.Volume(size=mp.Vector3(dx, 0, 0), center=_to_mp_v3(self.center))
+            ez = sim.get_field_point(mp.Ez, self.center)
+            z = self.rescaling_factor * ez * dx**1
+        elif self.dimensions == 2:
+            vol = mp.Volume(size=mp.Vector3(dx, dx, 0), center=_to_mp_v3(self.center))
+            ez = sim.get_field_point(mp.Ez, self.center)
+            z = self.rescaling_factor * ez * dx**2
+        else:  # 3D
+            ex = sim.get_field_point(mp.Ex, self.center)
+            ey = sim.get_field_point(mp.Ey, self.center)
+            ez = sim.get_field_point(mp.Ez, self.center)
+            x = self.rescaling_factor * ex * dx**3
+            y = self.rescaling_factor * ey * dx**3
+            z = self.rescaling_factor * ez * dx**3
+        return [np.real(x), np.real(y), np.real(z)]
+    
     def _calculate_ep_integral_anisotropic_analytical(self, sim: mp.Simulation):
         """
         Compute the regularized E-field integral over the molecule's kernel
