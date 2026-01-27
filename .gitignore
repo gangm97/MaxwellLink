@@ -235,3 +235,14 @@ src/maxwelllink/sockets/_sockets_cpp.cpp
 maxwelllink_benchmark/
 
 projects/*/
+projects/erd-*.md
+projects/experiments.json
+projects/progress.md
+
+# experimental, highly volatile files
+skills/erd
+skills/ralph-science
+projects/CODEX.md
+projects/progress-template.md
+projects/ralph-science.sh
+projects/experiments.schema.json
