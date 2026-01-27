@@ -18,7 +18,7 @@ running across networked nodes using a TCP socket interface.
    :scale: 25
 
 Key capabilities
-----------------
+~~~~~~~~~~~~~~~~~~~
 
 - Simplified and **unified Python API** for self-consistent light-matter simulations.
 - Couple an EM solver (such as Meep FDTD or a single-mode cavity) to one or many molecular
@@ -34,7 +34,7 @@ Key capabilities
   by writing a few wrapper functions; see :doc:`contributing` for details.
 
 Included EM solvers
-------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **Meep FDTD** – a popular (industry-standard) open-source FDTD package with a user-friendly 
   Python interface maintained by `MIT <https://meep.readthedocs.io/en/latest/>`_.
@@ -45,7 +45,7 @@ Included EM solvers
   without back-action from the molecular system, useful for pump-probe and strong-field simulations.
 
 Included molecular drivers
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **Model systems** – a lightweight TLS driver and a `QuTiP <https://qutip.org>`_ interface for custom
   Hamiltonians with optional Lindblad terms.
@@ -57,7 +57,7 @@ Included molecular drivers
   ``fix mxl``.
 
 Learning path
--------------
+~~~~~~~~~~~~~~~
 
 1. :doc:`installation` walks through the recommended conda environment and
    optional driver dependencies.

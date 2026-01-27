@@ -15,6 +15,8 @@ description: This skill should be used when users need the canonical MaxwellLink
   - Construct molecules with `Molecule(driver="<id>", driver_kwargs={...})`.
 - Use socket mode when drivers must run as separate processes or nodes:
   - Construct a `SocketHub(...)`, pass `hub=hub` into each `Molecule(...)`, and launch one `mxl_driver --model <id> ...` per molecule.
+- If local socket runs fail with MPI/network permission errors, prefer embedded mode (`Molecule(driver="...", ...)`) on local machines and reserve socket mode for SLURM/HPC.
+- For local socket mode, you can disable MPI auto-init with `MPI4PY_RC_INITIALIZE=0` and ensure loopback NIC usage (use `127.0.0.1`; set site-specific NIC selection env vars if MPI/OFI tries a non-loopback interface).
 
 ## Handle units/time
 - For Meep: set `time_units_fs` on `MeepSimulation(...)` and keep it consistent when interpreting driver times.

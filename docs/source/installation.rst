@@ -81,13 +81,28 @@ your existing `LAMMPS <https://www.lammps.org/>`_ build and recompile.
 Install **MaxwellLink** from source
 --------------------------------------
 
-In the same conda environment, if you are interested in understanding and contributing to **MaxwellLink**, clone the repository and install the package:
+In the same conda environment, if you are interested in chatting with or contributing to **MaxwellLink**, clone the repository and install the package:
 
 .. code-block:: bash
 
    git clone https://github.com/TaoELi/MaxwellLink.git
    cd MaxwellLink
    pip install .
+
+
+Vibe simulations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Users can run ``vibe simulations``, i.e., using natural language prompts to set up and run
+**MaxwellLink** simulations. To enable this feature, install either `VS Code IDE + Codex extension <https://developers.openai.com/codex/ide>`_ or `Codex CLI <https://developers.openai.com/codex/cli/>`_.
+
+Then, open Codex at the root directory of the **MaxwellLink** repository and start to chat:
+
+.. code-block:: text
+
+   In my local machine, run an initially weakly excited two-level system coupled to 2d vacuum using meep fdtd and plot the excited-state population dynamics
+
+It supports ``vibe simulations`` on both local machines and HPC clusters. See :doc:`agent_skills` for more details.
 
 
 Enter the developer mode

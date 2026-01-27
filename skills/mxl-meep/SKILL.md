@@ -30,3 +30,6 @@ description: This skill should be used when users need MaxwellLink + Meep FDTD w
 ## MPI/libfabric init tips (macOS/local single-rank)
 - Sandbox note: sandboxed runs often block the libfabric endpoint; if `MPI_Init_thread` fails with `ep_enable`/socket errors, rerun **unsandboxed** (`sandbox_permissions=require_escalated`).
 - When Matplotlib is imported, set `MPLCONFIGDIR=/tmp/mplconfig` to avoid cache permission errors.
+
+## Other common bugs 
+- The `dimensions=...` input can only be assigned in `mxl.Molecule()` not `mxl.MeepSimulation()`. For example, assiging `dimensions=1` in both `mxl.Molecule()` and `mxl.MeepSimulation()` will lead to runtime error: meep: cannot require a ez component in a 1D grid.
