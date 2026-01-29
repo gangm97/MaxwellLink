@@ -246,3 +246,6 @@ projects/CODEX.md
 projects/progress-template.md
 projects/ralph-science.sh
 projects/experiments.schema.json
+
+tests/test_agents/*/
+tests/test_agents/prompts_local_extended.txt

@@ -90,21 +90,6 @@ In the same conda environment, if you are interested in chatting with or contrib
    pip install .
 
 
-Vibe simulations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Users can run ``vibe simulations``, i.e., using natural language prompts to set up and run
-**MaxwellLink** simulations. To enable this feature, install either `VS Code IDE + Codex extension <https://developers.openai.com/codex/ide>`_ or `Codex CLI <https://developers.openai.com/codex/cli/>`_.
-
-Then, open Codex at the root directory of the **MaxwellLink** repository and start to chat:
-
-.. code-block:: text
-
-   In my local machine, run an initially weakly excited two-level system coupled to 2d vacuum using meep fdtd and plot the excited-state population dynamics
-
-It supports ``vibe simulations`` on both local machines and HPC clusters. See :doc:`agent_skills` for more details.
-
-
 Enter the developer mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -149,3 +134,61 @@ Then generate the API and HTML pages using Sphinx and open them in your default 
 .. code-block:: bash
 
    make doc html
+
+
+Vibe simulations
+--------------------------------------
+
+Users can run ``vibe simulations``, i.e., using natural language prompts to set up and run
+**MaxwellLink** simulations. To enable this feature, install either `VS Code IDE + Codex extension <https://developers.openai.com/codex/ide>`_ or `Codex CLI <https://developers.openai.com/codex/cli/>`_.
+
+Then, open Codex at the root directory of the **MaxwellLink** repository (requiring installing **MaxwellLink** from source) and start to chat:
+
+.. code-block:: text
+
+   In my local machine, run an initially weakly excited two-level system coupled to 2d vacuum using meep fdtd and plot the excited-state population dynamics
+
+It supports ``vibe simulations`` on both local machines and HPC clusters. See :doc:`agent_skills` for more details.
+
+.. note::
+
+   For users running ``vibe simulations`` on local machines, usually the agent runs on a sandboxed environment. For ``vibe simulations`` on local machines (**not on HPC**), this might conflict with the MPI environment used by `Meep <https://meep.readthedocs.io/en/latest/>`_, leading to failed simulations.
+   To resolve this issue, consider installing the serial version of `Meep <https://meep.readthedocs.io/en/latest/>`_ (i.e., without MPI support) instead:
+
+   .. code-block:: bash
+
+      conda install -c conda-forge pymeep="*=nompi_*"
+
+Testing and Validation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, ``pytest`` does not run unit tests for ``vibe simulations`` that require Codex. To run these tests, first install ``codex`` (either the VS Code extension or the CLI tool), 
+then make sure you have logged in with your OpenAI API key or account credentials. Finally, run the unit tests with the ``agent`` marker:
+
+.. code-block:: bash
+
+   # run agent tests, default run on local machines
+   pytest -m agent -v
+   # run agent tests on local machines
+   pytest -m agent --codex-prompts local -v
+   # run agent tests on hpc machines
+   pytest -m agent --codex-prompts hpc -v
+   # run agent tests by skipping the passed tests in the last run
+   pytest -m agent -v --codex-resume
+
+.. note::
+
+   A **passed** simulation here means that the agent was able to generate a working simulation script and get some results. It does **not guarantee** that the simulation results are **physically accurate**.
+
+
+Running a batch of prompts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Users can also use this unit test feature to automatically run a set of Codex prompts (each line corresponds to one independent prompt) stored in a text file:
+
+.. code-block:: bash
+
+   # run agent tests, default run on local machines
+   pytest -m agent -v --codex-prompts-file path/to/your/prompts.txt
+
+The output is stored at ``tests/test_agents/your_prompt_file_name/`` by default.

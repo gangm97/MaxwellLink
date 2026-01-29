@@ -124,7 +124,9 @@ markers = [
   "core: marks tests as core (deselect with '-m \"not core\"')",
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
   "optional: marks tests as optional (deselect with '-m \"not optional\"')",
+  "agent: integration tests that run Codex agents (costly, non-deterministic, and turned off by default)",
 ]
+addopts = "-m 'not agent'"
 filterwarnings = [
   "ignore:.*SwigPy(Packed|Object).*no __module__ attribute:DeprecationWarning",
   "ignore:.*swigvarlink.*no __module__ attribute:DeprecationWarning",

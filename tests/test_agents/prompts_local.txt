@@ -1,0 +1,5 @@
+In this local machine, run an initially weakly excited two-level system coupled to 1D vacuum using MEEP FDTD and plot the excited-state population dynamics.
+In this local machine, run an initially weakly excited two-level system coupled to 2D vacuum using MEEP FDTD and plot the excited-state population dynamics.
+In this local machine, run an initially weakly excited two-level system coupled to 3D vacuum using MEEP FDTD and plot the excited-state population dynamics.
+In this local machine, run an initially weakly excited two-level system coupled to a single cavity mode for forming polaritons and plot the molecular dipole moment dynamics and the corresponding spectrum.
+In this local machine, run a two-level system starting from ground state strongly driven by a resonant Gaussian pulse and plot the molecular excited-state dynamics.
