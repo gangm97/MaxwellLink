@@ -8,6 +8,14 @@ employed electromagnetic solver.
 Advanced features in **MaxwellLink** which differ from other light-matter simulators are also highlighted
 in a separate section.
 
+Laser-Driven Dynamics
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+
+   notebook/driven_tls.ipynb
+
 Single-Mode Cavity
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -19,14 +27,6 @@ Single-Mode Cavity
    notebook/singlemode_many_drivers.ipynb
    notebook/singlemode_vsc.ipynb
 
-
-Laser-Driven Dynamics
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. toctree::
-   :maxdepth: 1
-
-   notebook/driven_tls.ipynb
 
 MEEP FDTD
 ~~~~~~~~~~~~~~~~~~~~~~~~

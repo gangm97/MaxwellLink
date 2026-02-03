@@ -5,15 +5,15 @@ Tutorials
 
 Advanced features in **MaxwellLink** which  differ from other light-matter simulators are also highlighted in the **Advanced Features** section.
 
+## Laser driven dynamics
+- [Cosine driving of TLS](./driven_tls.ipynb)
+
 ## Single-Mode Cavity
 
 - [Rabi splitting with TLS](./singlemode_tls.ipynb)
 - [Electronic strong coupling with HCN](./singlemode_esc.ipynb)
 - [Collective, heterogeneous coupling of QuTiP + RT-TDDFT HCN molecules](./singlemode_many_drivers.ipynb)
 - [Vibrational strong coupling with liquid water: Unix socket](./singlemode_vsc.ipynb)
-
-## Laser driven dynamics
-- [Cosine driving of TLS](./driven_tls.ipynb)
 
 ## MEEP FDTD
 
