@@ -614,7 +614,7 @@ body[data-theme="auto"][data-default-mode="dark"] {
 
   .mxl-hero {
     padding: calc(2.8rem + 4.6rem) 1.8rem 3.8rem;
-    min-height: 100vh;
+    min-height: auto;
   }
 
   .mxl-hero__grid {
@@ -635,6 +635,29 @@ body[data-theme="auto"][data-default-mode="dark"] {
 
   .mxl-hero__stats {
     max-width: 100%;
+  }
+
+  .mxl-hero__visual {
+    min-height: auto;
+    width: 100%;
+  }
+
+  .mxl-glass-card {
+    width: 100%;
+    max-width: 100%;
+    padding: 1.05rem 1.1rem;
+  }
+
+  .mxl-loop--hero .mxl-loop__block {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .mxl-loop--hero .mxl-loop__meta {
+    font-size: 0.72rem;
+  }
+
+  body.mxl-landing h1.mxl-hero__title {
+    font-size: clamp(2.1rem, 6.5vw, 3.1rem) !important;
   }
 }
 
