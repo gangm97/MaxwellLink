@@ -13,6 +13,7 @@ from typing import Callable, Dict
 __all__ = [
     "DummyModel",
     "TLSModel",
+    "Ehrenfest2State1DModel",
     "QuTiPModel",
     "RTTDDFTModel",
     "RTEhrenfestModel",
@@ -21,6 +22,7 @@ __all__ = [
 ]
 
 
+print('*************************************')
 # --- Lazy attribute loader for direct class access ---
 def __getattr__(name: str):
     """
@@ -50,6 +52,10 @@ def __getattr__(name: str):
         from .tls_model import TLSModel
 
         return TLSModel
+    if name == "Ehrenfest2State1DModel":
+        from .ehrenfest_model import Ehrenfest2State1DModel
+
+        return Ehrenfest2State1DModel
     if name == "QuTiPModel":
         from .qutip_model import QuTiPModel
 
@@ -127,6 +133,7 @@ def _factory(cls_path: str) -> Callable:
 __drivers__: Dict[str, Callable] = {
     "dummy": _factory(".dummy_model:DummyModel"),
     "tls": _factory(".tls_model:TLSModel"),
+    "ehrenfest": _factory(".ehrenfest_model:Ehrenfest2State1DModel"),
     "qutip": _factory(".qutip_model:QuTiPModel"),
     "rttddft": _factory(".rttddft_model:RTTDDFTModel"),
     "rtehrenfest": _factory(".rt_ehrenfest_model:RTEhrenfestModel"),
