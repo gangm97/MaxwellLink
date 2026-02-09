@@ -11,6 +11,7 @@ Each driver page documents its parameters, expected outputs, and any runtime pre
    :maxdepth: 1
 
    tls
+   ehrenfest
    qutip
    rttddft
    rtehrenfest
